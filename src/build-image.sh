@@ -124,8 +124,18 @@ cp -f "$GUEST/build-output/initramfs-lts" "$GUEST/initramfs-lts"
 rm -rf "$GUEST/build-output"
 rm -f "$ROOTFS/usr/bin/qemu-aarch64-static" "$ROOTFS/tmp/provision.sh"
 
-# Make root login usable on the serial console without storing a password in the image.
-# The image is intended for local serial use; SSH is not enabled by default.
+# Configure a serial getty for QEMU's ARM virt console. The guest is local-only
+# by default, so root starts with an empty password; change it immediately with
+# `passwd` after the first login. SSH is not enabled by default.
+cat > "$ROOTFS/etc/inittab" <<'EOF'
+::sysinit:/sbin/openrc sysinit
+::sysinit:/sbin/openrc boot
+::wait:/sbin/openrc default
+ttyAMA0::respawn:/sbin/getty -L 115200 ttyAMA0 vt100
+::ctrlaltdel:/sbin/reboot
+::shutdown:/sbin/openrc shutdown
+EOF
+sed -i 's/^root:[^:]*:/root::/' "$ROOTFS/etc/shadow"
 rm -f "$ROOTFS/etc/ssh/sshd_config" 2>/dev/null || true
 
 # mke2fs reads the source tree as the current user. APKs contain a few

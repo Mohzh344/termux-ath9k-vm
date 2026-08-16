@@ -12,7 +12,12 @@ A local QEMU boot reached Alpine OpenRC without a kernel panic:
 Alpine Init 3.14.0-r0
 Mounting root: ok.
 OpenRC 0.63.2 is starting up Linux 6.18.44-0-lts (aarch64)
+Welcome to Alpine Linux 3.24
+Kernel 6.18.44-0-lts on aarch64 (/dev/ttyAMA0)
+(none) login:
 ```
+
+The image configures `getty` on `ttyAMA0`. The initial local root password is empty so the first console login can be completed by entering `root` and pressing Enter; the password should be changed immediately with `passwd`.
 
 The image was also checked for `iw`, `lsusb`, `aircrack-ng`, and `aireplay-ng`. Alpine places the aircrack-ng executables under `/usr/sbin`.
 

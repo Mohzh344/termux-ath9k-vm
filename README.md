@@ -57,7 +57,7 @@ chmod 700 src/install-termux.sh bin/*.sh
 ./src/install-termux.sh
 ```
 
-The script installs QEMU and Termux:API, makes the launchers executable, checks the required image files, and verifies `guest/SHA256SUMS` when present. It does not require Android root.
+The script installs QEMU and Termux:API, makes the launchers executable, checks the required image files, and verifies `guest/SHA256SUMS` when present. It does not require Android root. The release image is configured for a local serial login; no SSH server is enabled by default.
 
 ## Start the VM without USB
 
@@ -66,6 +66,12 @@ Start the guest and enter its serial console with:
 ```sh
 cd "$HOME/termux-ath9k-vm"
 ./bin/launch-vm.sh
+```
+
+A login prompt is provided on QEMU's `ttyAMA0` serial console. For the release image, enter `root` and press **Enter** at the password prompt on the first local login. The guest intentionally starts with an empty root password for this local-only console; change it immediately:
+
+```sh
+passwd
 ```
 
 The guest uses a serial console and does not install a graphical desktop. This keeps CPU, RAM, battery, and storage use much lower than a graphical Linux VM. Stop the VM with `Ctrl-C` in the Termux session.
