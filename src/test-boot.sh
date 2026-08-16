@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 set -eu
 BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 LOG="${LOG:-$BASE_DIR/boot-test.log}"
