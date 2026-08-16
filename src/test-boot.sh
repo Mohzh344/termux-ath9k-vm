@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-set -u
+set -eu
 BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-LOG="$BASE_DIR/boot-test.log"
+LOG="${LOG:-$BASE_DIR/boot-test.log}"
+BOOT_TIMEOUT="${BOOT_TIMEOUT:-420}"
 set +e
-timeout 70s qemu-system-aarch64 \
-  -machine virt -cpu max -m 768M -smp 2 \
+timeout "${BOOT_TIMEOUT}s" qemu-system-aarch64 \
+  -machine virt -accel tcg,thread=single -cpu max -m 768M -smp 1 \
   -kernel "$BASE_DIR/guest/vmlinuz-lts" \
   -initrd "$BASE_DIR/guest/initramfs-lts" \
   -append 'console=ttyAMA0,115200 root=/dev/vda rw rootfstype=ext4 rootwait' \
@@ -18,7 +19,7 @@ timeout 70s qemu-system-aarch64 \
 status=$?
 printf 'qemu_exit=%s\n' "$status"
 tail -n 80 "$LOG"
-if grep -qE 'Mounting root: ok|Alpine Init|OpenRC .* is starting' "$LOG"; then
+if grep -qE 'Mounting root: ok|Alpine Init|OpenRC .* is starting|login:' "$LOG"; then
   echo 'BOOT_OK: guest kernel and root disk reached Alpine init/OpenRC'
   exit 0
 fi

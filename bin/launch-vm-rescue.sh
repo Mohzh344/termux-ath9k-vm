@@ -13,9 +13,6 @@ MONITOR="${MONITOR:-$VM_DIR/qemu-monitor.sock}"
 SHARE_DIR="${SHARE_DIR:-$HOME}"
 USB_MODE="${USB_MODE:-none}"
 USB_REDIRECT_PORT="${USB_REDIRECT_PORT:-23456}"
-SERIAL_MODE="${SERIAL_MODE:-stdio}"
-CONSOLE_SOCKET="${CONSOLE_SOCKET:-$VM_DIR/qemu-console.sock}"
-PIDFILE="${PIDFILE:-}"
 TCG_THREAD="${TCG_THREAD:-auto}"
 
 QEMU="${QEMU:-qemu-system-aarch64}"
@@ -31,11 +28,6 @@ if [ -S "$MONITOR" ]; then
   exit 1
 fi
 rm -f "$MONITOR"
-case "$SERIAL_MODE" in
-  unix) rm -f "$CONSOLE_SOCKET" ;;
-  stdio) ;;
-  *) echo "SERIAL_MODE must be stdio or unix" >&2; exit 2 ;;
-esac
 
 # TCG is mandatory on rootless Android. A single virtual CPU avoids costly
 # inter-vCPU synchronization during boot; multi-thread TCG is only used when requested SMP > 1.
@@ -54,7 +46,7 @@ ARGS=(
   -smp "$SMP"
   -kernel "$KERNEL"
   -initrd "$INITRD"
-  -append "console=ttyAMA0,115200 root=/dev/vda rw rootfstype=ext4 rootwait"
+  -append "console=ttyAMA0,115200 root=/dev/vda rw rootfstype=ext4 rootwait init=/bin/sh"
   -drive "if=none,id=rootdisk,format=raw,file=$DISK,cache=writeback"
   -device virtio-blk-pci,drive=rootdisk
   -device virtio-rng-pci
@@ -62,26 +54,10 @@ ARGS=(
   -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${SSH_PORT}-:22"
   -device virtio-net-pci,netdev=net0
   -virtfs "local,security_model=none,id=termux,mount_tag=termux,path=$SHARE_DIR"
-  -display none
+  -nographic
   -monitor "unix:$MONITOR,server,nowait"
+  -serial mon:stdio
 )
-
-if [ -n "$PIDFILE" ]; then
-  ARGS+=( -pidfile "$PIDFILE" )
-fi
-
-case "$SERIAL_MODE" in
-  stdio)
-    # Normal no-USB mode: guest serial plus QEMU monitor on this terminal.
-    ARGS+=( -serial mon:stdio )
-    ;;
-  unix)
-    # USB permission is held by termux-usb, which owns child stdio.  Publish
-    # only the guest UART on a private Unix socket, then attach via socat.
-    ARGS+=( -chardev "socket,id=serial0,path=$CONSOLE_SOCKET,server=on,wait=off" )
-    ARGS+=( -serial chardev:serial0 )
-    ;;
-esac
 
 case "$USB_MODE" in
   none)

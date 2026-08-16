@@ -6,4 +6,8 @@ if [ -z "${TERMUX_USB_FD:-}" ]; then
   exit 1
 fi
 export USB_MODE=direct
+# termux-usb owns stdio while it holds Android's USB permission.  A socket
+# console keeps the VM interactive from a second Termux session.
+export SERIAL_MODE=unix
+export CONSOLE_SOCKET="${CONSOLE_SOCKET:-$BASE_DIR/qemu-console.sock}"
 exec "$BASE_DIR/bin/launch-vm.sh" "$@"

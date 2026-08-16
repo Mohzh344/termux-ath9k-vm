@@ -42,10 +42,10 @@ Install Termux and Termux:API from compatible official sources. Do not mix Termu
 
 ```sh
 pkg update
-pkg install -y qemu-system-aarch64-headless termux-api
+pkg install -y qemu-system-aarch64-headless termux-api socat e2fsprogs
 ```
 
-The default VM configuration assigns 1536 MiB of RAM and four virtual CPUs. A phone with 6–8 GiB RAM is recommended. For a 4 GiB device, start with the reduced profile shown below.
+The recommended rootless-TCG profile assigns 768 MiB of RAM and one virtual CPU. On an Android phone without KVM, extra virtual CPUs can slow boot through TCG synchronization and 1536 MiB may force Android to swap. Use 1024 MiB only when a workload demonstrably needs it.
 
 ## Installation script
 
@@ -58,6 +58,21 @@ chmod 700 src/install-termux.sh bin/*.sh
 ```
 
 The script installs QEMU and Termux:API, makes the launchers executable, checks the required image files, and verifies `guest/SHA256SUMS` when present. It does not require Android root. The release image is configured for a local serial login; no SSH server is enabled by default.
+
+## Recommended: unified interactive launcher
+
+The recommended entry point is the additive launcher below. It remembers the selected RAM, virtual CPU count, and disk image in `.vm-launcher.conf`, detects Android-visible USB devices, requests Android USB permission when a device is selected, and opens the guest console automatically.
+
+```sh
+cd "$HOME/termux-ath9k-vm"
+./bin/vm-launcher.sh
+```
+
+For a USB device, QEMU is intentionally launched by `termux-usb -E -e` so it inherits Android's granted USB file descriptor. The launcher then connects the guest serial console through a private Unix socket in the same Termux session; no second session and no manual `termux-usb -l` command are required.
+
+Before its first boot of a selected image, the launcher performs an **offline** `securetty` verification. If `ttyAMA0` is missing, it adds it, stores a sparse backup alongside the image, and verifies the result before booting. If it is already present, it makes no image change. This permits root login on QEMU's serial console. The repair uses `debugfs`, supplied by `e2fsprogs`; if it is not installed, run `pkg install e2fsprogs` once. Never run this repair while the VM is running.
+
+The established manual scripts remain available for advanced/debug use: `bin/launch-vm.sh`, `bin/launch-vm-rescue.sh`, and `bin/usb-attach-direct.sh`.
 
 ## Start the VM without USB
 
@@ -79,13 +94,13 @@ The guest uses a serial console and does not install a graphical desktop. This k
 For a lower-resource phone:
 
 ```sh
-RAM=768 SMP=2 ./bin/launch-vm.sh
+RAM=768 SMP=1 ./bin/launch-vm.sh
 ```
 
 For a balanced profile on a 6 GiB phone:
 
 ```sh
-RAM=1024 SMP=2 ./bin/launch-vm.sh
+RAM=1024 SMP=1 ./bin/launch-vm.sh
 ```
 
 ## Attach an AR9271 USB adapter
@@ -147,7 +162,7 @@ Mounting root: ok.
 OpenRC 0.63.2 is starting up Linux 6.18.44-0-lts (aarch64)
 ```
 
-The ext4 image contains the matching module tree, `ath9k_htc.ko.gz`, AR9271 firmware, `iw`, `lsusb`, `aircrack-ng`, and `aireplay-ng` under Alpine's standard executable paths. The project also includes `docs/TEST-RESULTS.md` with the test boundary and the checks that must be repeated on the physical phone.
+The ext4 image contains the matching module tree, `ath9k_htc.ko.gz`, AR9271 firmware, `iw`, `lsusb`, `aircrack-ng`, and `aireplay-ng` under Alpine's standard executable paths. The project also includes `docs/TEST-RESULTS.md` with the test boundary and the checks that must be repeated on the physical phone. Maintainers can create a sparse-aware release archive only after shutting down the VM with `src/package-release.sh vX.Y.Z`; it regenerates the guest checksum manifest inside the archive and refuses to package a running disk image.
 
 ## Resource and hardware notes
 
@@ -161,7 +176,8 @@ Use monitor-mode or packet-transmission capabilities only on networks and device
 
 | Path | Purpose |
 |---|---|
-| `bin/launch-vm.sh` | Starts the guest without USB or with a selected USB mode |
+| `bin/vm-launcher.sh` | **Recommended** interactive entry point: resource choices, USB selection, automatic console, and clean shutdown |
+| `bin/launch-vm.sh` | Low-level guest launcher without USB or with a selected USB mode |
 | `bin/usb-attach-direct.sh` | Grants one Android USB device and starts direct QEMU passthrough |
 | `bin/qemu-direct-inner.sh` | Receives `TERMUX_USB_FD` and starts QEMU |
 | `bin/usb-attach-redir.sh` | Optional localhost usb-redir fallback |
@@ -169,6 +185,7 @@ Use monitor-mode or packet-transmission capabilities only on networks and device
 | `src/download-artifacts.sh` | Downloads pinned Alpine build inputs |
 | `src/build-image.sh` | Rebuilds the guest disk, kernel, and initramfs |
 | `src/test-boot.sh` | Performs a local non-USB QEMU boot test |
+| `src/package-release.sh` | Creates a sparse-aware, checksum-verified release archive from a stopped VM image |
 | `docs/TEST-RESULTS.md` | Records verified behavior and physical-device test limits |
 
 ## References

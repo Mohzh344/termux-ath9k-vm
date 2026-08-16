@@ -10,7 +10,7 @@ DISK_SIZE="${DISK_SIZE:-2G}"
 ALPINE_MIRROR="${ALPINE_MIRROR:-http://dl-cdn.alpinelinux.org/alpine/v3.24}"
 
 need() { command -v "$1" >/dev/null || { echo "missing command: $1" >&2; exit 1; }; }
-for x in tar curl truncate mke2fs qemu-aarch64-static chroot; do need "$x"; done
+for x in tar truncate mke2fs qemu-aarch64-static proot; do need "$x"; done
 
 mkdir -p "$GUEST" "$GUEST/boot"
 rm -rf "$ROOTFS"
@@ -88,16 +88,6 @@ EOF
 
 # Add tools through the guest's own apk, using QEMU user emulation.
 # This is intentionally limited to diagnostics and the aircrack-ng suite; no attack automation is installed.
-cat > "$ROOTFS/tmp/provision.sh" <<'EOF'
-#!/bin/sh
-set -eu
-apk update
-apk add --no-cache alpine-base bash ca-certificates iproute2 iw usbutils kmod ethtool wireless-tools \
-  aircrack-ng tcpdump busybox-extras openssh-client
-rc-update add networking boot || true
-EOF
-chmod 0755 "$ROOTFS/tmp/provision.sh"
-
 # Use the ARM64 apk binary directly under QEMU user-mode. This avoids host chroot
 # restrictions and skips package scripts that require unshare during image construction.
 qemu-aarch64-static -L "$ROOTFS" "$ROOTFS/sbin/apk" --root "$ROOTFS" --arch aarch64 update
@@ -136,6 +126,10 @@ ttyAMA0::respawn:/sbin/getty -L 115200 ttyAMA0 vt100
 ::shutdown:/sbin/openrc shutdown
 EOF
 sed -i 's/^root:[^:]*:/root::/' "$ROOTFS/etc/shadow"
+# BusyBox login refuses root on serial terminals that are absent from securetty,
+# even when /etc/shadow contains a valid or empty password.
+grep -qxF 'ttyAMA0' "$ROOTFS/etc/securetty" || printf '%s\n' 'ttyAMA0' >> "$ROOTFS/etc/securetty"
+chmod 0600 "$ROOTFS/etc/shadow"
 rm -f "$ROOTFS/etc/ssh/sshd_config" 2>/dev/null || true
 
 # mke2fs reads the source tree as the current user. APKs contain a few
