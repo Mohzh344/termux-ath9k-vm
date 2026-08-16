@@ -1,0 +1,25 @@
+# Build outputs and local logs
+*.log
+boot-test.log
+build-*.log
+
+# Generated guest binaries are distributed as GitHub Release assets.
+# Do not commit the sparse disk image or generated boot files to Git history.
+guest/*.img
+guest/vmlinuz-*
+guest/initramfs-*
+guest/SHA256SUMS
+
+# Downloaded Alpine build inputs
+artifacts/*
+!artifacts/.gitkeep
+
+# Local sockets and temporary output
+*.sock
+run/
+build-output/
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/
