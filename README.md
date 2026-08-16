@@ -19,7 +19,7 @@ A real Alpine Linux ARM64 virtual machine for Android/Termux, powered by QEMU. T
 
 ## Download
 
-The easiest installation method is to download the archive attached to the GitHub Release. The archive contains the ready-to-run disk image, matching kernel and initramfs, launch scripts, and documentation. The source repository itself intentionally does not store the 2 GiB sparse disk image in Git history; GitHub Release assets are used for large binaries.
+The easiest installation method is to download the archive from the [latest GitHub Release](https://github.com/Mohzh344/termux-ath9k-vm/releases/latest). The archive contains the ready-to-run disk image, matching kernel and initramfs, launch scripts, and documentation. The source repository itself intentionally does not store the 2 GiB sparse disk image in Git history; GitHub Release assets are used for large binaries.
 
 After downloading `termux-ath9k-vm-ready.tar.gz` into Termux, verify the checksum if the matching `.sha256` file is available:
 
