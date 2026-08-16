@@ -19,12 +19,19 @@ safe_unlink(){ rm -f -- "$@"; }
 qemu_running(){ pgrep -f '[q]emu-system-aarch64' >/dev/null 2>&1; }
 monitor(){ [ -S "$MONITOR" ] && printf '%s\n' "$1" | socat - "UNIX-CONNECT:$MONITOR" >/dev/null 2>&1; }
 load_conf(){
+  # Under `set -e`, this function must succeed when the optional file is absent
+  # or when it contains an obsolete disk path.  `return` without an explicit
+  # status preserves the preceding failed test and aborts the interactive flow.
   SAVED_RAM=768; SAVED_SMP=1; SAVED_DISK=""
-  [ -f "$CONF" ] || return
+  [ -f "$CONF" ] || return 0
   local x
-  x="$(sed -n 's/^RAM=//p' "$CONF"|head -1)"; valid_ram "$x" && SAVED_RAM="$x"
-  x="$(sed -n 's/^SMP=//p' "$CONF"|head -1)"; valid_smp "$x" && SAVED_SMP="$x"
-  x="$(sed -n 's|^DISK=||p' "$CONF"|head -1)"; [ -f "$x" ] && SAVED_DISK="$x"
+  x="$(sed -n 's/^RAM=//p' "$CONF" | head -1)"
+  if valid_ram "$x"; then SAVED_RAM="$x"; fi
+  x="$(sed -n 's/^SMP=//p' "$CONF" | head -1)"
+  if valid_smp "$x"; then SAVED_SMP="$x"; fi
+  x="$(sed -n 's|^DISK=||p' "$CONF" | head -1)"
+  if [ -f "$x" ]; then SAVED_DISK="$x"; fi
+  return 0
 }
 save_conf(){ umask 077; printf '# vm-launcher settings\nRAM=%s\nSMP=%s\nDISK=%s\n' "$RAM" "$SMP" "$DISK" > "$CONF"; }
 cleanup(){
@@ -105,6 +112,14 @@ start_usb(){
 main(){
   [ -t 0 ]&&[ -t 1 ]||die 'Run from an interactive Termux terminal.'; mkdir -p "$RUN_DIR"; qemu_running&&die 'A QEMU VM is already running; launcher will not disturb it.'
   need qemu-system-aarch64 'Install qemu-system-aarch64-headless first.'; need socat 'Install socat first.'; safe_unlink "$MONITOR" "$CONSOLE" "$PIDFILE"
-  say 'Termux Alpine Wi-Fi VM — unified launcher'; choose_resources; repair_securetty; choose_usb; ((USE_USB))&&start_usb||start_plain
+  say 'Termux Alpine Wi-Fi VM — unified launcher'
+  choose_resources
+  repair_securetty
+  choose_usb
+  if (( USE_USB )); then
+    start_usb
+  else
+    start_plain
+  fi
 }
 main "$@"
