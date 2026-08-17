@@ -152,6 +152,10 @@ cd "$HOME/termux-ath9k-vm"
 
 The build creates `guest/alpine-ath9k.img`, `guest/vmlinuz-lts`, and `guest/initramfs-lts`. It uses the full Alpine `linux-lts` package rather than the smaller `linux-virt` package because `linux-virt` does not contain the ath9k_htc wireless module. The build uses QEMU user-mode emulation and does not require the Android host to be rooted.
 
+## Release notes
+
+Detailed release history and the v0.3.0 migration/security notes are in [`docs/RELEASE-v0.3.0.md`](docs/RELEASE-v0.3.0.md).
+
 ## Verification
 
 The following local checks were completed for the released image:
