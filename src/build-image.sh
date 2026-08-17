@@ -125,6 +125,9 @@ ttyAMA0::respawn:/sbin/getty -L 115200 ttyAMA0 vt100
 ::ctrlaltdel:/sbin/reboot
 ::shutdown:/sbin/openrc shutdown
 EOF
+# The base BusyBox login can fall back to /etc/passwd even when shadow exists.
+# Keep the documented first local root login empty in both credential databases.
+sed -i 's/^root:[^:]*:/root::/' "$ROOTFS/etc/passwd"
 sed -i 's/^root:[^:]*:/root::/' "$ROOTFS/etc/shadow"
 # BusyBox login refuses root on serial terminals that are absent from securetty,
 # even when /etc/shadow contains a valid or empty password.
