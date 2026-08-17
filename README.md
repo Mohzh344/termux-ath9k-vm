@@ -83,7 +83,7 @@ cd "$HOME/termux-ath9k-vm"
 ./bin/launch-vm.sh
 ```
 
-A login prompt is provided on QEMU's `ttyAMA0` serial console. For the release image, enter `root` and press **Enter** at the password prompt on the first local login. The guest intentionally starts with an empty root password for this local-only console; both `/etc/passwd` and `/etc/shadow` are prepared for this first login so BusyBox fallback authentication works. Change it immediately:
+The release image opens a **root shell directly** on QEMU's local-only `ttyAMA0` serial console; there is intentionally no login or password prompt. This avoids the incompatible BusyBox shadow fallback path. Do not expose this VM console to an untrusted network or user. If you later install a remote login service, create a password first:
 
 ```sh
 passwd
@@ -186,7 +186,8 @@ Use monitor-mode or packet-transmission capabilities only on networks and device
 | `src/build-image.sh` | Rebuilds the guest disk, kernel, and initramfs |
 | `src/test-boot.sh` | Performs a local non-USB QEMU boot test |
 | `src/package-release.sh` | Creates a sparse-aware, checksum-verified release archive from a stopped VM image |
-| `src/repair-root-login.sh` | Offline recovery for a stopped image whose initial BusyBox root login is broken |
+| `src/repair-root-login.sh` | Offline repair for a stopped image whose initial BusyBox root login is broken |
+| `src/enable-root-autologin.sh` | Offline emergency recovery: configure ttyAMA0 as a direct root shell without login/password |
 | `docs/TEST-RESULTS.md` | Records verified behavior and physical-device test limits |
 
 ## References

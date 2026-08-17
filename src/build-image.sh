@@ -114,14 +114,14 @@ cp -f "$GUEST/build-output/initramfs-lts" "$GUEST/initramfs-lts"
 rm -rf "$GUEST/build-output"
 rm -f "$ROOTFS/usr/bin/qemu-aarch64-static" "$ROOTFS/tmp/provision.sh"
 
-# Configure a serial getty for QEMU's ARM virt console. The guest is local-only
+# Configure a root serial shell for QEMU's ARM virt console. The guest is local-only
 # by default, so root starts with an empty password; change it immediately with
 # `passwd` after the first login. SSH is not enabled by default.
 cat > "$ROOTFS/etc/inittab" <<'EOF'
 ::sysinit:/sbin/openrc sysinit
 ::sysinit:/sbin/openrc boot
 ::wait:/sbin/openrc default
-ttyAMA0::respawn:/sbin/getty -L 115200 ttyAMA0 vt100
+ttyAMA0::respawn:/bin/sh
 ::ctrlaltdel:/sbin/reboot
 ::shutdown:/sbin/openrc shutdown
 EOF
