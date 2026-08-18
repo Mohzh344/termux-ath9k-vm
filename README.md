@@ -19,22 +19,23 @@ A real Alpine Linux ARM64 virtual machine for Android/Termux, powered by QEMU. T
 
 ## Download
 
-The easiest installation method is to download the archive from the [latest GitHub Release](https://github.com/Mohzh344/termux-ath9k-vm/releases/latest). The archive contains the ready-to-run disk image, matching kernel and initramfs, launch scripts, and documentation. The source repository itself intentionally does not store the 2 GiB sparse disk image in Git history; GitHub Release assets are used for large binaries.
+The recommended installation method is to download the **Full + Lite Unified** archive from the [latest GitHub Release](https://github.com/Mohzh344/termux-ath9k-vm/releases/latest). It contains both ready-to-run VM bundles, their matching kernels and initramfs files, launch scripts, and documentation. The source repository itself intentionally does not store the 2 GiB sparse disk images in Git history; GitHub Release assets are used for large binaries.
 
-After downloading `termux-ath9k-vm-ready.tar.gz` into Termux, verify the checksum if the matching `.sha256` file is available:
+After downloading `termux-ath9k-vm-full-lite-ready.tar.gz` into Termux, verify the checksum:
 
 ```sh
-sha256sum -c termux-ath9k-vm-ready.tar.gz.sha256
+sha256sum -c termux-ath9k-vm-full-lite-ready.tar.gz.sha256
 ```
 
-Extract it under the Termux home directory:
+Extract it under the Termux home directory without stripping the archive root:
 
 ```sh
 mkdir -p "$HOME/termux-ath9k-vm"
-tar --sparse -xzf termux-ath9k-vm-ready.tar.gz \
-  --strip-components=1 -C "$HOME/termux-ath9k-vm"
+tar --sparse -xzf termux-ath9k-vm-full-lite-ready.tar.gz -C "$HOME/termux-ath9k-vm" --strip-components=1
 cd "$HOME/termux-ath9k-vm"
 ```
+
+The extracted directory contains `full/` and `lite/`; the top-level `bin/vm-launcher.sh` selects between them.
 
 ## Requirements
 
@@ -49,24 +50,25 @@ The recommended rootless-TCG profile assigns 768 MiB of RAM and one virtual CPU.
 
 ## Installation script
 
-The package includes `src/install-termux.sh`. Run it from the extracted project directory:
+The unified package includes `bin/install-termux.sh`. Run it from the extracted project directory:
 
 ```sh
 cd "$HOME/termux-ath9k-vm"
-chmod 700 src/install-termux.sh bin/*.sh
-./src/install-termux.sh
+bash bin/install-termux.sh
 ```
 
-The script installs QEMU and Termux:API, makes the launchers executable, checks the required image files, and verifies `guest/SHA256SUMS` when present. It does not require Android root. The release image is configured for a local serial login; no SSH server is enabled by default.
+The script installs QEMU, Termux:API, `socat`, and `e2fsprogs`, then makes the top-level and nested launchers executable. It does not require Android root. The guest images use local serial consoles; no SSH server is enabled by default.
 
 ## Recommended: unified interactive launcher
 
-The recommended entry point is the additive launcher below. It remembers the selected RAM, virtual CPU count, and disk image in `.vm-launcher.conf`, detects Android-visible USB devices, requests Android USB permission when a device is selected, and opens the guest console automatically.
+The recommended entry point is the additive unified launcher below. It detects complete Full and Lite bundles, asks which one to use when both are present, offers Lite `safe`/`tiny`/`lts` selection, detects Android-visible USB devices, requests Android USB permission when a device is selected, and opens the guest console automatically.
 
 ```sh
 cd "$HOME/termux-ath9k-vm"
 ./bin/vm-launcher.sh
 ```
+
+For scripted selection, use `VM_VARIANT=full` or `VM_VARIANT=lite`; for Lite, set `KERNEL_TIER=safe`, `tiny`, or `lts`. Use `--dry-run` to inspect detection without starting QEMU. The launcher never rebuilds or deletes an image automatically.
 
 For a USB device, QEMU is intentionally launched by `termux-usb -E -e` so it inherits Android's granted USB file descriptor. The launcher then connects the guest serial console through a private Unix socket in the same Termux session; no second session and no manual `termux-usb -l` command are required.
 
