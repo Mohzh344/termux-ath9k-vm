@@ -67,7 +67,10 @@ chmod +x "$ROOT/bin/"*.sh "$ROOT/lite/bin/"*.sh "$ROOT/lite/src/"*.sh
 
 rm -f -- "$OUT" "$OUT.sha256"
 tar --sparse -C "$STAGE" -czf "$OUT" "$(basename "$ROOT")"
-sha256sum "$OUT" > "$OUT.sha256"
+(
+  cd "$(dirname "$OUT")"
+  sha256sum "$(basename "$OUT")" > "$(basename "$OUT").sha256"
+)
 tar -tzf "$OUT" >/dev/null
 printf 'Created: %s\n' "$OUT"
 printf 'SHA-256: '; cut -d' ' -f1 "$OUT.sha256"
