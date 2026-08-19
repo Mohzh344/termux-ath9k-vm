@@ -17,6 +17,7 @@ CONSOLE_SOCKET="${CONSOLE_SOCKET:-$BASE_DIR/qemu-lite-console.sock}"
 MONITOR="${MONITOR:-$BASE_DIR/qemu-lite-monitor.sock}"
 PIDFILE="${PIDFILE:-}"
 ENABLE_NET="${ENABLE_NET:-0}"
+AUTH_MODE="${AUTH_MODE:-root-console}"
 SHARE_MODE="${SHARE_MODE:-none}"
 SHARE_DIR="${SHARE_DIR:-$HOME}"
 QEMU="${QEMU:-qemu-system-aarch64}"
@@ -55,7 +56,22 @@ esac
 [ -f "$KERNEL" ] || { echo "missing kernel: $KERNEL" >&2; exit 1; }
 [ -z "$INITRD" ] || [ -f "$INITRD" ] || { echo "missing initramfs: $INITRD" >&2; exit 1; }
 command -v "$QEMU" >/dev/null || { echo "missing $QEMU" >&2; exit 1; }
+configure_auth(){
+  local helper="$BASE_DIR/src/configure-console-auth.sh" current expected
+  [ -x "$helper" ] || { echo "missing auth helper: $helper" >&2; exit 1; }
+  current="$(debugfs -R 'cat /etc/inittab' "$DISK" 2>/dev/null || true)"
+  case "$AUTH_MODE" in
+    root-console) expected='ttyAMA0::respawn:/bin/sh -l' ;;
+    login) expected='ttyAMA0::respawn:/sbin/getty -L 0 ttyAMA0 vt100' ;;
+    login-empty) expected='ttyAMA0::respawn:/sbin/getty -L 0 ttyAMA0 vt100' ;;
+  esac
+  if [ "$AUTH_MODE" = login-empty ] || ! printf '%s\n' "$current" | grep -qxF "$expected"; then
+    "$helper" "$DISK" "$AUTH_MODE"
+  fi
+}
 case "$TCG_THREAD" in single|multi) ;; *) echo 'TCG_THREAD must be single or multi' >&2; exit 2 ;; esac
+case "$AUTH_MODE" in root-console|login|login-empty) ;; *) echo 'AUTH_MODE must be root-console, login, or login-empty' >&2; exit 2 ;; esac
+configure_auth
 case "$SERIAL_MODE" in stdio) SERIAL_ARGS=(-serial mon:stdio) ;; unix) rm -f "$CONSOLE_SOCKET"; SERIAL_ARGS=(-chardev "socket,id=serial0,path=$CONSOLE_SOCKET,server=on,wait=off" -serial chardev:serial0) ;; *) echo 'SERIAL_MODE must be stdio or unix' >&2; exit 2 ;; esac
 
 ARGS=(
@@ -95,7 +111,7 @@ case "$USB_MODE" in
   *) echo 'USB_MODE must be none, direct, or redir' >&2; exit 2 ;;
 esac
 
-echo "Lite VM: profile=$PROFILE tier=$KERNEL_TIER ram=${RAM}M smp=$SMP cpu=$CPU_MODEL tcg=$TCG_THREAD usb=$USB_MODE net=$ENABLE_NET rtc=$RTC_BASE time_sync=$TIME_SYNC share=$SHARE_MODE" >&2
+echo "Lite VM: profile=$PROFILE tier=$KERNEL_TIER ram=${RAM}M smp=$SMP cpu=$CPU_MODEL tcg=$TCG_THREAD usb=$USB_MODE net=$ENABLE_NET auth=$AUTH_MODE rtc=$RTC_BASE time_sync=$TIME_SYNC share=$SHARE_MODE" >&2
 
 if [ "$TIME_SYNC" = 1 ] && [ "$SERIAL_MODE" = unix ]; then
   command -v socat >/dev/null || { echo 'TIME_SYNC=1 requires socat.' >&2; exit 1; }

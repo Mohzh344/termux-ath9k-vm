@@ -21,10 +21,10 @@ A real Alpine Linux ARM64 virtual machine for Android/Termux, powered by QEMU. T
 
 The recommended installation method is to download the **Full + Lite Unified** archive from the [latest GitHub Release](https://github.com/Mohzh344/termux-ath9k-vm/releases/latest). It contains both ready-to-run VM bundles, their matching kernels and initramfs files, launch scripts, and documentation. The source repository itself intentionally does not store the 2 GiB sparse disk images in Git history; GitHub Release assets are used for large binaries.
 
-After downloading `termux-ath9k-vm-v033-full-lite-ready.tar.gz` into Termux, verify the checksum:
+After downloading `termux-ath9k-vm-v034-full-lite-ready.tar.gz` into Termux, verify the checksum:
 
 ```sh
-sha256sum -c termux-ath9k-vm-v033-full-lite-ready.tar.gz.sha256
+sha256sum -c termux-ath9k-vm-v034-full-lite-ready.tar.gz.sha256
 ```
 
 Extract it under the Termux home directory without stripping the archive root:
@@ -61,20 +61,20 @@ The script installs QEMU, Termux:API, `socat`, and `e2fsprogs`, then makes the t
 
 ## Recommended: unified interactive launcher
 
-The recommended entry point is the additive unified launcher below. It detects complete Full and Lite bundles, asks which one to use when both are present, offers Lite `safe`/`tiny`/`lts` selection, detects Android-visible USB devices, asks whether to grant Internet access with `y` or `n`, requests Android USB permission when a device is selected, synchronizes Alpine's system clock from Android at every launch, and opens the guest console automatically.
+The recommended entry point is the additive unified launcher below. It detects complete Full and Lite bundles, asks which one to use when both are present, offers explicit `root-console`, `login`, and `login-empty` console modes, offers Lite `safe`/`tiny`/`lts` selection, detects Android-visible USB devices, asks whether to grant Internet access with `y` or `n`, requests Android USB permission when a device is selected, synchronizes Alpine's system clock from Android at every launch, and opens the guest console automatically.
 
 ```sh
 cd "$HOME/termux-ath9k-vm"
 ./bin/vm-launcher.sh
 ```
 
-For scripted selection, use `VM_VARIANT=full` or `VM_VARIANT=lite`; for Lite, set `KERNEL_TIER=safe`, `tiny`, or `lts`. Set `ENABLE_NET=1` or `ENABLE_NET=0` to choose Internet access without a prompt, and use `TIME_SYNC=0` only for deterministic debugging. Use `--dry-run` to inspect detection without starting QEMU. The launcher never rebuilds or deletes an image automatically.
+For scripted selection, use `VM_VARIANT=full` or `VM_VARIANT=lite`; for Lite, set `KERNEL_TIER=safe`, `tiny`, or `lts`. Set `AUTH_MODE=root-console` for the recommended direct root shell, `AUTH_MODE=login` for a username/password prompt using the existing root password, or `AUTH_MODE=login-empty` for private local testing only. Set `ENABLE_NET=1` or `ENABLE_NET=0` to choose Internet access without a prompt, and use `TIME_SYNC=0` only for deterministic debugging. Use `--dry-run` to inspect detection without starting QEMU. The launcher never rebuilds or deletes an image automatically.
 
 For a USB device, QEMU is intentionally launched by `termux-usb -E -e` so it inherits Android's granted USB file descriptor. The launcher then connects the guest serial console through a private Unix socket in the same Termux session; no second session and no manual `termux-usb -l` command are required.
 
-Before its first boot of a selected image, the launcher performs an **offline** `securetty` verification. If `ttyAMA0` is missing, it adds it, stores a sparse backup alongside the image, and verifies the result before booting. If it is already present, it makes no image change. This permits root login on QEMU's serial console. The repair uses `debugfs`, supplied by `e2fsprogs`; if it is not installed, run `pkg install e2fsprogs` once. Never run this repair while the VM is running.
+Before booting a selected image, the launcher performs an **offline** authentication-mode preparation. `root-console` keeps direct `/bin/sh -l` root access; `login` switches `ttyAMA0` to BusyBox `getty` and preserves the current root password; `login-empty` clears root's password for private testing only. The helper uses `debugfs` and `e2fsck`, supplied by `e2fsprogs`, and refuses to edit the image while that image is running. Full now passes `rootflags=rw` to Alpine's initramfs; without it, the initramfs defaulted to a read-only root mount and `passwd` could not persist changes.
 
-The established manual scripts remain available for advanced/debug use: `bin/launch-vm.sh`, `bin/launch-vm-rescue.sh`, and `bin/usb-attach-direct.sh`. Lite v0.3.3 additionally configures DHCP automatically when `ENABLE_NET=1`, restores apk file locking in both custom tiers, validates the Lite ext4 image before packaging, synchronizes the guest system clock from Android at startup, and starts the console as `/bin/sh -l` so `/etc/profile` and `/usr/local/bin` are available automatically.
+The established manual scripts remain available for advanced/debug use: `bin/launch-vm.sh`, `bin/launch-vm-rescue.sh`, and `bin/usb-attach-direct.sh`. Lite v0.3.4 additionally configures DHCP automatically when `ENABLE_NET=1`, restores apk file locking in both custom tiers, validates the Lite ext4 image before packaging, synchronizes the guest system clock from Android at startup, and starts the console as `/bin/sh -l` by default so `/etc/profile` and `/usr/local/bin` are available automatically.
 
 ## Start the VM without USB
 
@@ -85,7 +85,7 @@ cd "$HOME/termux-ath9k-vm"
 ./bin/launch-vm.sh
 ```
 
-The release image opens a **root shell directly** on QEMU's local-only `ttyAMA0` serial console as `/bin/sh -l`; there is intentionally no username or password prompt. The `-l` flag only loads `/etc/profile` and `/etc/profile.d`, avoiding the old PATH problem without enabling a login manager. Do not expose this VM console to an untrusted network or user. If you later install a remote login service, create a password first:
+The default release mode opens a **root shell directly** on QEMU's local-only `ttyAMA0` serial console as `/bin/sh -l`; there is intentionally no username or password prompt. The `-l` flag only loads `/etc/profile` and `/etc/profile.d`, avoiding the old PATH problem without enabling a login manager. To use a normal local username/password prompt, start with `AUTH_MODE=login`; to test an empty-password login locally, use `AUTH_MODE=login-empty`. Do not expose this VM console to an untrusted network or user. If you later install a remote login service, create a password first:
 
 ```sh
 passwd
@@ -194,6 +194,7 @@ Use monitor-mode or packet-transmission capabilities only on networks and device
 | `src/package-release.sh` | Creates a sparse-aware, checksum-verified release archive from a stopped VM image |
 | `src/repair-root-login.sh` | Offline repair for a stopped image whose initial BusyBox root login is broken |
 | `src/enable-root-autologin.sh` | Offline emergency recovery: configure ttyAMA0 as a direct root shell without login/password |
+| `src/configure-console-auth.sh` | Switch a stopped guest between direct root, password login, and empty-password local testing modes |
 | `docs/TEST-RESULTS.md` | Records verified behavior and physical-device test limits |
 
 ## References

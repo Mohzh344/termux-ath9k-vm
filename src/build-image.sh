@@ -126,10 +126,13 @@ ttyAMA0::respawn:/bin/sh -l
 ::ctrlaltdel:/sbin/reboot
 ::shutdown:/sbin/openrc shutdown
 EOF
-# The base BusyBox login can fall back to /etc/passwd even when shadow exists.
 # Keep the documented first local root login empty in both credential databases.
 sed -i 's/^root:[^:]*:/root::/' "$ROOTFS/etc/passwd"
 sed -i 's/^root:[^:]*:/root::/' "$ROOTFS/etc/shadow"
+# Alpine/BusyBox expects a standard nine-field shadow record. Normalize the
+# root entry so passwd updates /etc/shadow and later login accepts the hash.
+awk -F: -v OFS=: '$1 == "root" { print $1,$2,($3==""?"0":$3),($4==""?"0":$4),($5==""?"99999":$5),($6==""?"7":$6),$7,$8,$9; next } { print }' "$ROOTFS/etc/shadow" > "$ROOTFS/etc/shadow.normalized"
+mv "$ROOTFS/etc/shadow.normalized" "$ROOTFS/etc/shadow"
 # BusyBox login refuses root on serial terminals that are absent from securetty,
 # even when /etc/shadow contains a valid or empty password.
 grep -qxF 'ttyAMA0' "$ROOTFS/etc/securetty" || printf '%s\n' 'ttyAMA0' >> "$ROOTFS/etc/securetty"

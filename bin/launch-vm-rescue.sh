@@ -46,7 +46,7 @@ ARGS=(
   -smp "$SMP"
   -kernel "$KERNEL"
   -initrd "$INITRD"
-  -append "console=ttyAMA0,115200 root=/dev/vda rw rootfstype=ext4 rootwait init=/bin/sh"
+  -append "console=ttyAMA0,115200 root=/dev/vda rw rootflags=rw rootfstype=ext4 rootwait init=/bin/sh"
   -drive "if=none,id=rootdisk,format=raw,file=$DISK,cache=writeback"
   -device virtio-blk-pci,drive=rootdisk
   -device virtio-rng-pci

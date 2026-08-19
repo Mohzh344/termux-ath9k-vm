@@ -14,6 +14,7 @@ USB_DEVICE=""
 USB_PID=""
 EXPLICIT_DIR=""
 ENABLE_NET="${ENABLE_NET:-}"
+AUTH_MODE="${AUTH_MODE:-}"
 RTC_BASE="${RTC_BASE:-$(date -u '+%Y-%m-%dT%H:%M:%S')}"
 TIME_SYNC="${TIME_SYNC:-1}"
 
@@ -33,6 +34,10 @@ Options:
   --non-interactive  Never prompt; require explicit selection when ambiguous.
   --full             Select the complete Full bundle when available.
   --lite             Select the complete Lite bundle when available.
+  --auth-mode MODE   root-console, login, or login-empty.
+  --root-console     Direct root shell without a login prompt (default).
+  --login            BusyBox getty username/password login.
+  --login-empty      Username/password login with empty root password (local testing only).
   --help             Show this help.
 
 Explicit environment variables are preserved, including DISK, KERNEL, INITRD,
@@ -47,6 +52,14 @@ while (($#)); do
     --non-interactive) NONINTERACTIVE=1 ;;
     --full) VARIANT=full ;;
     --lite) VARIANT=lite ;;
+    --auth-mode)
+      shift
+      [ "$#" -gt 0 ] || die '--auth-mode requires root-console, login, or login-empty.'
+      AUTH_MODE="$1"
+      ;;
+    --root-console) AUTH_MODE=root-console ;;
+    --login) AUTH_MODE=login ;;
+    --login-empty) AUTH_MODE=login-empty ;;
     --help|-h) usage; exit 0 ;;
     *) die "Unknown option: $1 (use --help)" ;;
   esac
@@ -64,7 +77,10 @@ fi
 if [ -n "${USB_MODE:-}" ]; then
   case "$USB_MODE" in none|direct|redir) ;; *) die 'USB_MODE must be none, direct, or redir.' ;; esac
 fi
-case "$TIME_SYNC" in 0|1) ;; *) die 'TIME_SYNC must be 0 or 1.' ;; esac
+case "$TIME_SYNC" in 0|1) ;; *) die 'TIME_SYNC must be 0 or 1.';; esac
+if [ -n "$AUTH_MODE" ]; then
+  case "$AUTH_MODE" in root-console|login|login-empty) ;; *) die 'AUTH_MODE must be root-console, login, or login-empty.';; esac
+fi
 
 required_full(){
   local d="$1"
@@ -212,6 +228,26 @@ choose_network(){
   done
 }
 
+choose_auth_mode(){
+  if [ -n "$AUTH_MODE" ]; then return; fi
+  if ((NONINTERACTIVE)); then AUTH_MODE=root-console; return; fi
+  printf '\nConsole authentication modes:\n'
+  printf '  1) root-console — direct root shell, no username/password prompt (recommended)\n'
+  printf '  2) login — BusyBox username/password login using the existing root password\n'
+  printf '  3) login-empty — login with empty root password (local testing only)\n'
+  local a
+  while :; do
+    read -r -p 'Choose console mode [1]: ' a
+    a="${a:-1}"
+    case "$a" in
+      1) AUTH_MODE=root-console; return;;
+      2) AUTH_MODE=login; return;;
+      3) AUTH_MODE=login-empty; warn 'login-empty is intended only for a private local console.'; return;;
+      *) warn 'Choose 1, 2, or 3.';;
+    esac
+  done
+}
+
 choose_usb(){
   if [ -n "${USB_MODE:-}" ]; then return; fi
   USB_MODE=none
@@ -248,11 +284,11 @@ choose_usb(){
 print_plan(){
   local d="$1"
   if [ "$VARIANT" = full ]; then
-    printf 'Detected=Full dir=%s disk=%s kernel=vmlinuz-lts initramfs=yes RAM=%s SMP=%s USB=%s net=%s rtc=%s\n' \
-      "$d" "${DISK:-$d/guest/alpine-ath9k.img}" "${RAM:-768}" "${SMP:-1}" "${USB_MODE:-none}" "${ENABLE_NET:-1}" "$RTC_BASE"
+    printf 'Detected=Full dir=%s disk=%s kernel=vmlinuz-lts initramfs=yes RAM=%s SMP=%s USB=%s net=%s auth=%s rtc=%s\n' \
+      "$d" "${DISK:-$d/guest/alpine-ath9k.img}" "${RAM:-768}" "${SMP:-1}" "${USB_MODE:-none}" "${ENABLE_NET:-1}" "${AUTH_MODE:-root-console}" "$RTC_BASE"
   else
-    printf 'Detected=Lite dir=%s disk=%s tier=%s profile=%s RAM/SMP=profile-default USB=%s net=%s rtc=%s\n' \
-      "$d" "${DISK:-$d/guest/alpine-ath9k-v030-lite.img}" "${KERNEL_TIER:-safe}" "${PROFILE:-wifi-only}" "${USB_MODE:-none}" "${ENABLE_NET:-0}" "$RTC_BASE"
+    printf 'Detected=Lite dir=%s disk=%s tier=%s profile=%s RAM/SMP=profile-default USB=%s net=%s auth=%s rtc=%s\n' \
+      "$d" "${DISK:-$d/guest/alpine-ath9k-v030-lite.img}" "${KERNEL_TIER:-safe}" "${PROFILE:-wifi-only}" "${USB_MODE:-none}" "${ENABLE_NET:-0}" "${AUTH_MODE:-root-console}" "$RTC_BASE"
   fi
 }
 
@@ -266,7 +302,7 @@ start_usb(){
   termux-usb -r "$USB_DEVICE" >/dev/null || die 'Android USB permission was denied.'
   env VM_DIR="$d" PROFILE="${PROFILE:-wifi-only}" KERNEL_TIER="${KERNEL_TIER:-safe}" \
     DISK="${DISK:-}" KERNEL="${KERNEL:-}" INITRD="${INITRD:-}" RAM="${RAM:-}" SMP="${SMP:-}" \
-    ENABLE_NET="$ENABLE_NET" RTC_BASE="$RTC_BASE" TIME_SYNC="$TIME_SYNC" USB_MODE=direct SERIAL_MODE=unix CONSOLE_SOCKET="$console" PIDFILE="$d/run/qemu.pid" \
+    ENABLE_NET="$ENABLE_NET" AUTH_MODE="$AUTH_MODE" RTC_BASE="$RTC_BASE" TIME_SYNC="$TIME_SYNC" USB_MODE=direct SERIAL_MODE=unix CONSOLE_SOCKET="$console" PIDFILE="$d/run/qemu.pid" \
     termux-usb -E -e "$inner" "$USB_DEVICE" >"$log" 2>&1 & USB_PID=$!
   trap 'kill "$USB_PID" 2>/dev/null || true' INT TERM EXIT
   local n
@@ -284,6 +320,7 @@ main(){
   select_variant
   local d; d="$(bundle_dir)"
   if [ "$VARIANT" = full ]; then choose_full_resources; else choose_lite_tier; choose_lite_profile; fi
+  choose_auth_mode
   choose_usb
   choose_network
   print_plan "$d"
@@ -294,7 +331,7 @@ main(){
     else
       say 'Starting Full with the existing linux-lts + initramfs path.'
       full_args=("$BASE_DIR/bin/launch-vm-full-unified.sh")
-      env_args=("VM_DIR=$d" "DISK=${DISK:-$d/guest/alpine-ath9k.img}" "KERNEL=${KERNEL:-$d/guest/vmlinuz-lts}" "INITRD=${INITRD:-$d/guest/initramfs-lts}" "RAM=$RAM" "SMP=$SMP" "ENABLE_NET=$ENABLE_NET" "RTC_BASE=$RTC_BASE" "TIME_SYNC=$TIME_SYNC" "USB_MODE=${USB_MODE:-none}" "TCG_THREAD=${TCG_THREAD:-auto}" "SERIAL_MODE=${SERIAL_MODE:-stdio}" "SHARE_DIR=${SHARE_DIR:-$HOME}")
+      env_args=("VM_DIR=$d" "DISK=${DISK:-$d/guest/alpine-ath9k.img}" "KERNEL=${KERNEL:-$d/guest/vmlinuz-lts}" "INITRD=${INITRD:-$d/guest/initramfs-lts}" "RAM=$RAM" "SMP=$SMP" "ENABLE_NET=$ENABLE_NET" "AUTH_MODE=$AUTH_MODE" "RTC_BASE=$RTC_BASE" "TIME_SYNC=$TIME_SYNC" "USB_MODE=${USB_MODE:-none}" "TCG_THREAD=${TCG_THREAD:-auto}" "SERIAL_MODE=${SERIAL_MODE:-stdio}" "SHARE_DIR=${SHARE_DIR:-$HOME}")
       exec env "${env_args[@]}" "${full_args[@]}"
     fi
   elif [ "${USB_MODE:-none}" = direct ]; then
@@ -302,7 +339,7 @@ main(){
   else
     say 'Starting Lite without USB passthrough.'
     lite_args=("$d/bin/launch-vm-lite.sh")
-    env_args=("PROFILE=${PROFILE:-wifi-only}" "KERNEL_TIER=${KERNEL_TIER:-safe}" "DISK=${DISK:-$d/guest/alpine-ath9k-v030-lite.img}" "ENABLE_NET=$ENABLE_NET" "RTC_BASE=$RTC_BASE" "TIME_SYNC=$TIME_SYNC" "USB_MODE=${USB_MODE:-none}" "TCG_THREAD=${TCG_THREAD:-multi}")
+    env_args=("PROFILE=${PROFILE:-wifi-only}" "KERNEL_TIER=${KERNEL_TIER:-safe}" "DISK=${DISK:-$d/guest/alpine-ath9k-v030-lite.img}" "ENABLE_NET=$ENABLE_NET" "AUTH_MODE=$AUTH_MODE" "RTC_BASE=$RTC_BASE" "TIME_SYNC=$TIME_SYNC" "USB_MODE=${USB_MODE:-none}" "TCG_THREAD=${TCG_THREAD:-multi}")
     [ -z "${RAM:-}" ] || env_args+=("RAM=$RAM")
     [ -z "${SMP:-}" ] || env_args+=("SMP=$SMP")
     [ -z "${CPU_MODEL:-}" ] || env_args+=("CPU_MODEL=$CPU_MODEL")
