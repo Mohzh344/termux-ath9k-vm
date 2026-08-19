@@ -1,6 +1,6 @@
 # termux-ath9k-vm — Full + Lite Unified Bundle
 
-This archive contains the canonical **v0.3.0 Full** VM and the corrected additive **v0.3.1 Lite** VM in one download. Full remains byte-for-byte sourced from the published v0.3.0 release; Lite contains the v0.3.1 fixes and can be selected independently.
+This archive contains the canonical **v0.3.0 Full** VM and the corrected additive **v0.3.3 Lite** VM in one download. The v0.3.3 release applies the direct login-shell/PATH correction to both guest images while preserving the local root-console design.
 
 ## Quick start in Termux
 
@@ -12,7 +12,7 @@ bash bin/install-termux.sh
 bash bin/vm-launcher.sh
 ```
 
-The unified launcher detects complete Full and Lite bundles. If both are present, it asks which one to use, then asks `Grant Internet access to this VM? [y/N]:`. Answer `y` to attach QEMU user networking or `n` to keep the guest offline. It also seeds QEMU's RTC from the Android/Termux host clock and explicitly runs `date -u -s` inside the guest after the local root prompt at every launch. It does not rebuild, delete, or overwrite a disk image automatically.
+The unified launcher detects complete Full and Lite bundles. If both are present, it asks which one to use, then asks `Grant Internet access to this VM? [y/N]:`. Answer `y` to attach QEMU user networking or `n` to keep the guest offline. It also seeds QEMU's RTC from the Android/Termux host clock and explicitly runs `date -u -s` inside the guest after the local root prompt at every launch. Both guest images start `ttyAMA0` with `/bin/sh -l`; this reads `/etc/profile` and `/etc/profile.d` but does not invoke a username/password login program. It does not rebuild, delete, or overwrite a disk image automatically.
 
 For a non-interactive or scripted selection:
 
@@ -34,7 +34,7 @@ bash bin/vm-launcher.sh --lite --dry-run
 | Variant | Best for | Kernel path |
 |---|---|---|
 | **Full** | The original complete v0.3.0 environment with its existing tools, networking, 9p share, and recovery/manual helpers | Alpine `linux-lts` plus initramfs |
-| **Lite / safe** | Recommended everyday AR9271/ath9k_htc use on Android with a compatibility-oriented custom kernel and working post-boot apk installation | Direct-root `vmlinuz-safe` |
+| **Lite / safe** | Recommended everyday AR9271/ath9k_htc use on Android with a compatibility-oriented custom kernel, working post-boot apk installation, and direct login-shell PATH | Direct-root `vmlinuz-safe` |
 | **Lite / tiny** | AR9271-only use when the smallest custom kernel is preferred; it now includes the file-locking support required by apk | Direct-root `vmlinuz-tiny` |
 | **Lite / lts** | Fallback troubleshooting path if a custom Lite tier does not boot on a particular setup | Lite linux-lts plus initramfs |
 
@@ -60,14 +60,14 @@ termux-ath9k-vm-full-lite/
 │   ├── bin/
 │   ├── guest/alpine-ath9k.img
 │   └── guest/vmlinuz-lts + initramfs-lts
-├── lite/                           # corrected additive Lite v0.3.1 bundle
+├── lite/                           # corrected additive Lite v0.3.3 bundle
 │   ├── bin/
 │   ├── guest/alpine-ath9k-v030-lite.img
 │   └── guest/vmlinuz-tiny/safe/lts-lite
 └── docs/UNIFIED-RELEASE.md
 ```
 
-The nested Full launcher and files are copied from the published Full release and remain byte-for-byte unchanged. The nested Lite launcher and files are copied from the published Lite release. The top-level dispatcher and its Full adapter are the new normal-use layer for the optional Internet prompt and Android-clock RTC seeding.
+The nested Full guest is sourced from the published Full release, then receives only the documented v0.3.3 console-shell/PATH patch; its credentials remain passwordless for the local console. The Lite guest is patched and its builder/source script is updated equivalently. The top-level dispatcher and its Full adapter remain the normal-use layer for the optional Internet prompt and Android-clock RTC seeding.
 
 ## Advanced and build scripts
 

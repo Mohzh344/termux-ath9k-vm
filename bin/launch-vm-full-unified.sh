@@ -105,7 +105,7 @@ if [ "$TIME_SYNC" = 1 ] && [ "$SERIAL_MODE" = unix ]; then
   CONSOLE_READER=$!
   PROMPT_SEEN=0
   for _ in $(seq 1 120); do
-    if grep -aEq '~ #[[:space:]]*$' "$CONSOLE_SOCKET.time-sync-capture" 2>/dev/null; then PROMPT_SEEN=1; break; fi
+    if grep -aEq '^[^#]*#[[:space:]]' "$CONSOLE_SOCKET.time-sync-capture" 2>/dev/null; then PROMPT_SEEN=1; break; fi
     kill -0 "$QEMU_PID" 2>/dev/null || break
     sleep 0.25
   done

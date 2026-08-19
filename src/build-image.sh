@@ -83,6 +83,7 @@ chmod 0755 "$ROOTFS/usr/local/sbin/wifi-diagnose"
 
 cat > "$ROOTFS/etc/profile.d/wifi-vm.sh" <<'EOF'
 export LANG=C
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 alias ll='ls -alF'
 EOF
 
@@ -114,14 +115,14 @@ cp -f "$GUEST/build-output/initramfs-lts" "$GUEST/initramfs-lts"
 rm -rf "$GUEST/build-output"
 rm -f "$ROOTFS/usr/bin/qemu-aarch64-static" "$ROOTFS/tmp/provision.sh"
 
-# Configure a root serial shell for QEMU's ARM virt console. The guest is local-only
-# by default, so root starts with an empty password; change it immediately with
-# `passwd` after the first login. SSH is not enabled by default.
+# Configure a direct root login shell for QEMU's ARM virt console. The `-l`
+# flag only loads /etc/profile; it does not invoke a username/password login.
+# SSH is not enabled by default.
 cat > "$ROOTFS/etc/inittab" <<'EOF'
 ::sysinit:/sbin/openrc sysinit
 ::sysinit:/sbin/openrc boot
 ::wait:/sbin/openrc default
-ttyAMA0::respawn:/bin/sh
+ttyAMA0::respawn:/bin/sh -l
 ::ctrlaltdel:/sbin/reboot
 ::shutdown:/sbin/openrc shutdown
 EOF

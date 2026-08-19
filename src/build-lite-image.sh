@@ -51,7 +51,7 @@ EOF
 cat > "$ROOTFS/etc/motd" <<'EOF'
 Alpine ARM64 WiFi VM — Lite
 
-This is the lightweight v0.3.1 companion image. USB devices are attached by the Android/Termux launcher.
+This is the lightweight v0.3.3 companion image. The console starts as a direct root login shell for profile loading; USB devices are attached by the Android/Termux launcher.
 Run /usr/local/sbin/wifi-diagnose for non-destructive diagnostics.
 Run /usr/local/sbin/install-wifi-tools only when optional Wi-Fi packages are needed.
 EOF
@@ -90,8 +90,8 @@ chmod 0755 "$ROOTFS/usr/local/sbin/qemu-net-init"
 install -m 0755 "$PROJECT_DIR/src/guest-install-wifi-tools.sh" "$ROOTFS/usr/local/sbin/install-wifi-tools"
 ln -sf /usr/local/sbin/install-wifi-tools "$ROOTFS/usr/bin/install-wifi-tools"
 ln -sf /usr/local/sbin/wifi-diagnose "$ROOTFS/usr/bin/wifi-diagnose"
-printf '%s\n' 'export LANG=C' "alias ll='ls -alF'" > "$ROOTFS/etc/profile.d/wifi-vm.sh"
-printf '%s\n' 'variant=lite' 'release=v0.3.1' 'full_reference=v0.3.0-unchanged' 'optional_tools=guest-installer' > "$ROOTFS/etc/termux-ath9k-vm-image"
+printf '%s\n' 'export LANG=C' 'export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' "alias ll='ls -alF'" > "$ROOTFS/etc/profile.d/wifi-vm.sh"
+printf '%s\n' 'variant=lite' 'release=v0.3.3' 'full_reference=v0.3.0-unchanged' 'optional_tools=guest-installer' > "$ROOTFS/etc/termux-ath9k-vm-image"
 
 # Lite keeps the console, firmware, iw, lsusb, and diagnostics. It does not
 # install aircrack-ng, tcpdump, hostapd, OpenSSH, Python, or compiler packages.
@@ -126,14 +126,14 @@ cp -f "$GUEST/build-output/initramfs-lts-lite" "$GUEST/initramfs-lts-lite"
 rm -rf "$GUEST/build-output"
 rm -f "$ROOTFS/usr/bin/qemu-aarch64-static"
 
-# Preserve the exact v0.3.0 Full console behavior: a private local serial root
-# shell, not a password prompt. This does not modify the Full image.
+# Start a private local serial root login shell, not a login manager or password
+# prompt. The `-l` flag makes BusyBox ash read /etc/profile automatically.
 cat > "$ROOTFS/etc/inittab" <<'EOF'
 ::sysinit:/sbin/openrc sysinit
 ::sysinit:/sbin/openrc boot
 ::sysinit:/usr/local/sbin/qemu-net-init
 ::wait:/sbin/openrc default
-ttyAMA0::respawn:/bin/sh
+ttyAMA0::respawn:/bin/sh -l
 ::ctrlaltdel:/sbin/reboot
 ::shutdown:/sbin/openrc shutdown
 EOF
