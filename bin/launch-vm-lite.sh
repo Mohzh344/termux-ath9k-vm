@@ -20,6 +20,16 @@ ENABLE_NET="${ENABLE_NET:-0}"
 SHARE_MODE="${SHARE_MODE:-none}"
 SHARE_DIR="${SHARE_DIR:-$HOME}"
 QEMU="${QEMU:-qemu-system-aarch64}"
+# Termux's date command reads the Android host clock. QEMU seeds the guest RTC
+# from this value on every launch, before Alpine starts OpenRC.
+RTC_BASE="${RTC_BASE:-$(date -u '+%Y-%m-%dT%H:%M:%S')}"
+TIME_SYNC="${TIME_SYNC:-1}"
+TIME_SYNC_MARKER="${TIME_SYNC_MARKER:-$CONSOLE_SOCKET.timesync-ready}"
+ATTACH_AFTER_SYNC=0
+if [ "$TIME_SYNC" = 1 ] && [ "$SERIAL_MODE" = stdio ]; then
+  SERIAL_MODE=unix
+  ATTACH_AFTER_SYNC=1
+fi
 
 case "$PROFILE" in
   wifi-only) : "${RAM:=512}"; : "${SMP:=1}"; ENABLE_NET="${ENABLE_NET:-0}"; SHARE_MODE="${SHARE_MODE:-none}" ;;
@@ -60,6 +70,7 @@ ARGS=(
   -device virtio-blk-pci,drive=rootdisk
   -device virtio-rng-pci
   -device qemu-xhci,id=xhci
+  -rtc "base=$RTC_BASE"
   -display none
   -monitor "unix:$MONITOR,server,nowait"
   "${SERIAL_ARGS[@]}"
@@ -84,5 +95,36 @@ case "$USB_MODE" in
   *) echo 'USB_MODE must be none, direct, or redir' >&2; exit 2 ;;
 esac
 
-echo "Lite VM: profile=$PROFILE tier=$KERNEL_TIER ram=${RAM}M smp=$SMP cpu=$CPU_MODEL tcg=$TCG_THREAD usb=$USB_MODE net=$ENABLE_NET share=$SHARE_MODE" >&2
-exec "$QEMU" "${ARGS[@]}"
+echo "Lite VM: profile=$PROFILE tier=$KERNEL_TIER ram=${RAM}M smp=$SMP cpu=$CPU_MODEL tcg=$TCG_THREAD usb=$USB_MODE net=$ENABLE_NET rtc=$RTC_BASE time_sync=$TIME_SYNC share=$SHARE_MODE" >&2
+
+if [ "$TIME_SYNC" = 1 ] && [ "$SERIAL_MODE" = unix ]; then
+  command -v socat >/dev/null || { echo 'TIME_SYNC=1 requires socat.' >&2; exit 1; }
+  rm -f "$TIME_SYNC_MARKER" "$CONSOLE_SOCKET.time-sync-capture"
+  "$QEMU" "${ARGS[@]}" &
+  QEMU_PID=$!
+  for _ in $(seq 1 60); do
+    [ -S "$CONSOLE_SOCKET" ] && break
+    kill -0 "$QEMU_PID" 2>/dev/null || { wait "$QEMU_PID" || true; exit 1; }
+    sleep 0.25
+  done
+  [ -S "$CONSOLE_SOCKET" ] || { kill "$QEMU_PID" 2>/dev/null || true; wait "$QEMU_PID" 2>/dev/null || true; echo 'Timed out waiting for serial console for time sync.' >&2; exit 1; }
+  socat -u "UNIX-CONNECT:$CONSOLE_SOCKET" - >"$CONSOLE_SOCKET.time-sync-capture" 2>/dev/null &
+  CONSOLE_READER=$!
+  PROMPT_SEEN=0
+  for _ in $(seq 1 120); do
+    if grep -aEq '~ #[[:space:]]*$' "$CONSOLE_SOCKET.time-sync-capture" 2>/dev/null; then PROMPT_SEEN=1; break; fi
+    kill -0 "$QEMU_PID" 2>/dev/null || break
+    sleep 0.25
+  done
+  kill "$CONSOLE_READER" 2>/dev/null || true
+  wait "$CONSOLE_READER" 2>/dev/null || true
+  SYNC_DATE="${RTC_BASE/T/ }"
+  printf "date -u -s '%s'\n" "$SYNC_DATE" | socat - "UNIX-CONNECT:$CONSOLE_SOCKET" >/dev/null 2>&1 || true
+  touch "$TIME_SYNC_MARKER"
+  if [ "$ATTACH_AFTER_SYNC" = 1 ]; then
+    socat -,raw,echo=0 "UNIX-CONNECT:$CONSOLE_SOCKET" || true
+  fi
+  wait "$QEMU_PID"
+else
+  exec "$QEMU" "${ARGS[@]}"
+fi

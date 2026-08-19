@@ -61,20 +61,20 @@ The script installs QEMU, Termux:API, `socat`, and `e2fsprogs`, then makes the t
 
 ## Recommended: unified interactive launcher
 
-The recommended entry point is the additive unified launcher below. It detects complete Full and Lite bundles, asks which one to use when both are present, offers Lite `safe`/`tiny`/`lts` selection, detects Android-visible USB devices, requests Android USB permission when a device is selected, and opens the guest console automatically.
+The recommended entry point is the additive unified launcher below. It detects complete Full and Lite bundles, asks which one to use when both are present, offers Lite `safe`/`tiny`/`lts` selection, detects Android-visible USB devices, asks whether to grant Internet access with `y` or `n`, requests Android USB permission when a device is selected, synchronizes Alpine's system clock from Android at every launch, and opens the guest console automatically.
 
 ```sh
 cd "$HOME/termux-ath9k-vm"
 ./bin/vm-launcher.sh
 ```
 
-For scripted selection, use `VM_VARIANT=full` or `VM_VARIANT=lite`; for Lite, set `KERNEL_TIER=safe`, `tiny`, or `lts`. Use `--dry-run` to inspect detection without starting QEMU. The launcher never rebuilds or deletes an image automatically.
+For scripted selection, use `VM_VARIANT=full` or `VM_VARIANT=lite`; for Lite, set `KERNEL_TIER=safe`, `tiny`, or `lts`. Set `ENABLE_NET=1` or `ENABLE_NET=0` to choose Internet access without a prompt, and use `TIME_SYNC=0` only for deterministic debugging. Use `--dry-run` to inspect detection without starting QEMU. The launcher never rebuilds or deletes an image automatically.
 
 For a USB device, QEMU is intentionally launched by `termux-usb -E -e` so it inherits Android's granted USB file descriptor. The launcher then connects the guest serial console through a private Unix socket in the same Termux session; no second session and no manual `termux-usb -l` command are required.
 
 Before its first boot of a selected image, the launcher performs an **offline** `securetty` verification. If `ttyAMA0` is missing, it adds it, stores a sparse backup alongside the image, and verifies the result before booting. If it is already present, it makes no image change. This permits root login on QEMU's serial console. The repair uses `debugfs`, supplied by `e2fsprogs`; if it is not installed, run `pkg install e2fsprogs` once. Never run this repair while the VM is running.
 
-The established manual scripts remain available for advanced/debug use: `bin/launch-vm.sh`, `bin/launch-vm-rescue.sh`, and `bin/usb-attach-direct.sh`. Lite v0.3.1 additionally configures DHCP automatically when `ENABLE_NET=1`, restores apk file locking in both custom tiers, and validates the Lite ext4 image before packaging.
+The established manual scripts remain available for advanced/debug use: `bin/launch-vm.sh`, `bin/launch-vm-rescue.sh`, and `bin/usb-attach-direct.sh`. Lite v0.3.2 additionally configures DHCP automatically when `ENABLE_NET=1`, restores apk file locking in both custom tiers, validates the Lite ext4 image before packaging, and synchronizes the guest system clock from Android at startup.
 
 ## Start the VM without USB
 

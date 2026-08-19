@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Unified front door for the combined Full + Lite release.
-# Existing Full/Lite launchers remain untouched and are delegated to.
+# The nested Full v0.3.0 files remain untouched; the top-level Full adapter
+# adds only the unified Internet policy and Android-clock synchronization.
 set -euo pipefail
 
 BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -12,6 +13,9 @@ VARIANT="${VM_VARIANT:-}"
 USB_DEVICE=""
 USB_PID=""
 EXPLICIT_DIR=""
+ENABLE_NET="${ENABLE_NET:-}"
+RTC_BASE="${RTC_BASE:-$(date -u '+%Y-%m-%dT%H:%M:%S')}"
+TIME_SYNC="${TIME_SYNC:-1}"
 
 say(){ printf '\n==> %s\n' "$*"; }
 warn(){ printf '\nWARNING: %s\n' "$*" >&2; }
@@ -32,7 +36,8 @@ Options:
   --help             Show this help.
 
 Explicit environment variables are preserved, including DISK, KERNEL, INITRD,
-RAM, SMP, PROFILE, KERNEL_TIER, USB_MODE, TCG_THREAD, SERIAL_MODE, and SHARE_MODE.
+RAM, SMP, PROFILE, KERNEL_TIER, USB_MODE, ENABLE_NET, RTC_BASE, TIME_SYNC,
+TCG_THREAD, SERIAL_MODE, and SHARE_MODE.
 EOF
 }
 
@@ -59,6 +64,7 @@ fi
 if [ -n "${USB_MODE:-}" ]; then
   case "$USB_MODE" in none|direct|redir) ;; *) die 'USB_MODE must be none, direct, or redir.' ;; esac
 fi
+case "$TIME_SYNC" in 0|1) ;; *) die 'TIME_SYNC must be 0 or 1.' ;; esac
 
 required_full(){
   local d="$1"
@@ -186,6 +192,26 @@ choose_lite_profile(){
   PROFILE="${a:-wifi-only}"
 }
 
+choose_network(){
+  if [ -n "$ENABLE_NET" ]; then
+    case "$ENABLE_NET" in 0|1) return;; *) die 'ENABLE_NET must be 0 or 1.';; esac
+  fi
+  if ((NONINTERACTIVE)); then
+    # Preserve the historical Full behavior while keeping Lite wifi-only offline.
+    if [ "$VARIANT" = full ]; then ENABLE_NET=1; else ENABLE_NET=0; fi
+    return
+  fi
+  local a
+  while :; do
+    read -r -p 'Grant Internet access to this VM? [y/N]: ' a
+    case "${a:-n}" in
+      [Yy]) ENABLE_NET=1; return;;
+      [Nn]) ENABLE_NET=0; return;;
+      *) warn 'Answer y or n.';;
+    esac
+  done
+}
+
 choose_usb(){
   if [ -n "${USB_MODE:-}" ]; then return; fi
   USB_MODE=none
@@ -222,11 +248,11 @@ choose_usb(){
 print_plan(){
   local d="$1"
   if [ "$VARIANT" = full ]; then
-    printf 'Detected=Full dir=%s disk=%s kernel=vmlinuz-lts initramfs=yes RAM=%s SMP=%s USB=%s\n' \
-      "$d" "${DISK:-$d/guest/alpine-ath9k.img}" "${RAM:-768}" "${SMP:-1}" "${USB_MODE:-none}"
+    printf 'Detected=Full dir=%s disk=%s kernel=vmlinuz-lts initramfs=yes RAM=%s SMP=%s USB=%s net=%s rtc=%s\n' \
+      "$d" "${DISK:-$d/guest/alpine-ath9k.img}" "${RAM:-768}" "${SMP:-1}" "${USB_MODE:-none}" "${ENABLE_NET:-1}" "$RTC_BASE"
   else
-    printf 'Detected=Lite dir=%s disk=%s tier=%s profile=%s RAM/SMP=profile-default USB=%s\n' \
-      "$d" "${DISK:-$d/guest/alpine-ath9k-v030-lite.img}" "${KERNEL_TIER:-safe}" "${PROFILE:-wifi-only}" "${USB_MODE:-none}"
+    printf 'Detected=Lite dir=%s disk=%s tier=%s profile=%s RAM/SMP=profile-default USB=%s net=%s rtc=%s\n' \
+      "$d" "${DISK:-$d/guest/alpine-ath9k-v030-lite.img}" "${KERNEL_TIER:-safe}" "${PROFILE:-wifi-only}" "${USB_MODE:-none}" "${ENABLE_NET:-0}" "$RTC_BASE"
   fi
 }
 
@@ -240,7 +266,7 @@ start_usb(){
   termux-usb -r "$USB_DEVICE" >/dev/null || die 'Android USB permission was denied.'
   env VM_DIR="$d" PROFILE="${PROFILE:-wifi-only}" KERNEL_TIER="${KERNEL_TIER:-safe}" \
     DISK="${DISK:-}" KERNEL="${KERNEL:-}" INITRD="${INITRD:-}" RAM="${RAM:-}" SMP="${SMP:-}" \
-    USB_MODE=direct SERIAL_MODE=unix CONSOLE_SOCKET="$console" PIDFILE="$d/run/qemu.pid" \
+    ENABLE_NET="$ENABLE_NET" RTC_BASE="$RTC_BASE" TIME_SYNC="$TIME_SYNC" USB_MODE=direct SERIAL_MODE=unix CONSOLE_SOCKET="$console" PIDFILE="$d/run/qemu.pid" \
     termux-usb -E -e "$inner" "$USB_DEVICE" >"$log" 2>&1 & USB_PID=$!
   trap 'kill "$USB_PID" 2>/dev/null || true' INT TERM EXIT
   local n
@@ -259,15 +285,16 @@ main(){
   local d; d="$(bundle_dir)"
   if [ "$VARIANT" = full ]; then choose_full_resources; else choose_lite_tier; choose_lite_profile; fi
   choose_usb
+  choose_network
   print_plan "$d"
   ((DRY_RUN)) && exit 0
   if [ "$VARIANT" = full ]; then
     if [ "${USB_MODE:-none}" = direct ]; then
-      start_usb "$d" "$d/bin/qemu-direct-inner.sh" Full
+      start_usb "$d" "$BASE_DIR/bin/launch-vm-full-unified.sh" Full
     else
       say 'Starting Full with the existing linux-lts + initramfs path.'
-      full_args=("$d/bin/launch-vm.sh")
-      env_args=("VM_DIR=$d" "DISK=${DISK:-$d/guest/alpine-ath9k.img}" "KERNEL=${KERNEL:-$d/guest/vmlinuz-lts}" "INITRD=${INITRD:-$d/guest/initramfs-lts}" "RAM=$RAM" "SMP=$SMP" "USB_MODE=${USB_MODE:-none}" "TCG_THREAD=${TCG_THREAD:-auto}" "SERIAL_MODE=${SERIAL_MODE:-stdio}" "SHARE_DIR=${SHARE_DIR:-$HOME}")
+      full_args=("$BASE_DIR/bin/launch-vm-full-unified.sh")
+      env_args=("VM_DIR=$d" "DISK=${DISK:-$d/guest/alpine-ath9k.img}" "KERNEL=${KERNEL:-$d/guest/vmlinuz-lts}" "INITRD=${INITRD:-$d/guest/initramfs-lts}" "RAM=$RAM" "SMP=$SMP" "ENABLE_NET=$ENABLE_NET" "RTC_BASE=$RTC_BASE" "TIME_SYNC=$TIME_SYNC" "USB_MODE=${USB_MODE:-none}" "TCG_THREAD=${TCG_THREAD:-auto}" "SERIAL_MODE=${SERIAL_MODE:-stdio}" "SHARE_DIR=${SHARE_DIR:-$HOME}")
       exec env "${env_args[@]}" "${full_args[@]}"
     fi
   elif [ "${USB_MODE:-none}" = direct ]; then
@@ -275,7 +302,7 @@ main(){
   else
     say 'Starting Lite without USB passthrough.'
     lite_args=("$d/bin/launch-vm-lite.sh")
-    env_args=("PROFILE=${PROFILE:-wifi-only}" "KERNEL_TIER=${KERNEL_TIER:-safe}" "DISK=${DISK:-$d/guest/alpine-ath9k-v030-lite.img}" "USB_MODE=${USB_MODE:-none}" "TCG_THREAD=${TCG_THREAD:-multi}")
+    env_args=("PROFILE=${PROFILE:-wifi-only}" "KERNEL_TIER=${KERNEL_TIER:-safe}" "DISK=${DISK:-$d/guest/alpine-ath9k-v030-lite.img}" "ENABLE_NET=$ENABLE_NET" "RTC_BASE=$RTC_BASE" "TIME_SYNC=$TIME_SYNC" "USB_MODE=${USB_MODE:-none}" "TCG_THREAD=${TCG_THREAD:-multi}")
     [ -z "${RAM:-}" ] || env_args+=("RAM=$RAM")
     [ -z "${SMP:-}" ] || env_args+=("SMP=$SMP")
     [ -z "${CPU_MODEL:-}" ] || env_args+=("CPU_MODEL=$CPU_MODEL")
