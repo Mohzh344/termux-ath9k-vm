@@ -21,17 +21,17 @@ A real Alpine Linux ARM64 virtual machine for Android/Termux, powered by QEMU. T
 
 The recommended installation method is to download the **Full + Lite Unified** archive from the [latest GitHub Release](https://github.com/Mohzh344/termux-ath9k-vm/releases/latest). It contains both ready-to-run VM bundles, their matching kernels and initramfs files, launch scripts, and documentation. The source repository itself intentionally does not store the 2 GiB sparse disk images in Git history; GitHub Release assets are used for large binaries.
 
-After downloading `termux-ath9k-vm-full-lite-ready.tar.gz` into Termux, verify the checksum:
+After downloading `termux-ath9k-vm-v031-full-lite-ready.tar.gz` into Termux, verify the checksum:
 
 ```sh
-sha256sum -c termux-ath9k-vm-full-lite-ready.tar.gz.sha256
+sha256sum -c termux-ath9k-vm-v031-full-lite-ready.tar.gz.sha256
 ```
 
 Extract it under the Termux home directory without stripping the archive root:
 
 ```sh
 mkdir -p "$HOME/termux-ath9k-vm"
-tar --sparse -xzf termux-ath9k-vm-full-lite-ready.tar.gz -C "$HOME/termux-ath9k-vm" --strip-components=1
+tar --sparse -xzf termux-ath9k-vm-v031-full-lite-ready.tar.gz -C "$HOME/termux-ath9k-vm" --strip-components=1
 cd "$HOME/termux-ath9k-vm"
 ```
 
@@ -74,7 +74,7 @@ For a USB device, QEMU is intentionally launched by `termux-usb -E -e` so it inh
 
 Before its first boot of a selected image, the launcher performs an **offline** `securetty` verification. If `ttyAMA0` is missing, it adds it, stores a sparse backup alongside the image, and verifies the result before booting. If it is already present, it makes no image change. This permits root login on QEMU's serial console. The repair uses `debugfs`, supplied by `e2fsprogs`; if it is not installed, run `pkg install e2fsprogs` once. Never run this repair while the VM is running.
 
-The established manual scripts remain available for advanced/debug use: `bin/launch-vm.sh`, `bin/launch-vm-rescue.sh`, and `bin/usb-attach-direct.sh`.
+The established manual scripts remain available for advanced/debug use: `bin/launch-vm.sh`, `bin/launch-vm-rescue.sh`, and `bin/usb-attach-direct.sh`. Lite v0.3.1 additionally configures DHCP automatically when `ENABLE_NET=1`, restores apk file locking in both custom tiers, and validates the Lite ext4 image before packaging.
 
 ## Start the VM without USB
 
@@ -128,7 +128,7 @@ Inside the guest, use the non-destructive diagnostic helper:
 wifi-diagnose
 ```
 
-The expected diagnostic sequence is: the adapter appears in `lsusb`; the `ath9k_htc` module is available; the firmware is found; and a wireless interface appears in `iw dev` or `ip link`. Seeing the device in `lsusb` alone does not prove that the driver loaded successfully.
+The expected diagnostic sequence is: the adapter appears in `lsusb`; the `ath9k_htc` driver is built-in or registered; the firmware is found; and a wireless interface appears in `iw dev` or `ip link`. Seeing the device in `lsusb` alone does not prove that the driver loaded successfully.
 
 ## Optional usb-redir fallback
 

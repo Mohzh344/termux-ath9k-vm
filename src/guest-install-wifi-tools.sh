@@ -6,13 +6,52 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-apk update
-apk add --no-cache aircrack-ng tcpdump hostapd wireless-regdb iw usbutils kmod ethtool wireless-tools
+# Lite starts offline by design. If the launcher supplied a virtio NIC, bring it
+# up and obtain a QEMU user-network DHCP lease before touching apk.
+if command -v ip >/dev/null 2>&1 && ip link show eth0 >/dev/null 2>&1; then
+  /usr/local/sbin/qemu-net-init 2>/dev/null || true
+  if ! ip -4 addr show dev eth0 2>/dev/null | grep -q 'inet '; then
+    echo 'Network interface eth0 exists but has no IPv4 lease.' >&2
+    echo 'Restart Lite with ENABLE_NET=1 and a profile that permits networking.' >&2
+    exit 2
+  fi
+else
+  echo 'No guest network interface is available.' >&2
+  echo 'Restart Lite with ENABLE_NET=1 before running install-wifi-tools.' >&2
+  exit 2
+fi
+
+apk_with_tls_fallback() {
+  log="$(mktemp /tmp/apk-tls.XXXXXX)"
+  set +e
+  apk --check-certificate=yes "$@" >"$log" 2>&1
+  rc=$?
+  set -e
+  cat "$log"
+  if [ "$rc" -eq 0 ] && ! grep -Eq 'certificate not trusted|TLS: unspecified error|Could not load client' "$log"; then
+    rm -f "$log"
+    return 0
+  fi
+  if [ "${APK_ALLOW_INSECURE_FALLBACK:-1}" != 1 ]; then
+    echo 'APK TLS verification failed and insecure fallback is disabled.' >&2
+    rm -f "$log"
+    return "${rc:-2}"
+  fi
+  echo 'WARNING: APK TLS certificate verification failed in this guest/network path.' >&2
+  echo 'WARNING: retrying with --check-certificate=no; APK package signatures remain enabled.' >&2
+  rm -f "$log"
+  apk --check-certificate=no "$@"
+}
+
+apk_with_tls_fallback update
+apk_with_tls_fallback add --no-cache aircrack-ng tcpdump hostapd wireless-regdb iw usbutils kmod ethtool wireless-tools
 
 cat >/etc/wifi-tools-install-status <<'EOF'
 base=aircrack-ng,tcpdump,hostapd,wireless-regdb,iw,usbutils,kmod,ethtool,wireless-tools
 hcx=not-installed; use BUILD_HCX=1 for source build
 wps=not-installed; use INSTALL_WPS_TOOLS=1 only when explicitly needed
+optional_repo_tools=wifite,bully,reaver,kismet,hcxdumptool,hcxtools:not-in-Alpine-v3.24-repositories
+apk_tls=verified-or-explicit-signature-checked-fallback
 EOF
 
 if [ "${BUILD_HCX:-0}" = 1 ]; then

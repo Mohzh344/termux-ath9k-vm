@@ -48,6 +48,18 @@ while (($#)); do
   shift
 done
 
+# Validate explicit values before detection or dry-run so a typo can never
+# produce a misleading launch plan.
+if [ -n "${KERNEL_TIER:-}" ]; then
+  case "$KERNEL_TIER" in tiny|safe|lts) ;; *) die 'KERNEL_TIER must be tiny, safe, or lts.' ;; esac
+fi
+if [ -n "${PROFILE:-}" ]; then
+  case "$PROFILE" in wifi-only|balanced|default|legacy) ;; *) die 'PROFILE must be wifi-only, balanced, default, or legacy.' ;; esac
+fi
+if [ -n "${USB_MODE:-}" ]; then
+  case "$USB_MODE" in none|direct|redir) ;; *) die 'USB_MODE must be none, direct, or redir.' ;; esac
+fi
+
 required_full(){
   local d="$1"
   [ -f "$d/guest/alpine-ath9k.img" ] &&

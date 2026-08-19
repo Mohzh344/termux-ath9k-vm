@@ -8,6 +8,13 @@ GUEST="${GUEST_DIR:-$PROJECT_DIR/guest}"
 CROSS_COMPILE="${CROSS_COMPILE:-aarch64-linux-gnu-}"
 ARCH=arm64
 JOBS="${JOBS:-2}"
+REGDB_SOURCE="${REGDB_SOURCE:-}"
+if [ -z "$REGDB_SOURCE" ]; then
+  for candidate in "$PROJECT_DIR/artifacts/regulatory.db" "$GUEST/rootfs-lite/lib/firmware/regulatory.db"; do
+    if [ -s "$candidate" ]; then REGDB_SOURCE="$candidate"; break; fi
+  done
+fi
+REGDB_SIG_SOURCE="${REGDB_SIG_SOURCE:-${REGDB_SOURCE:+$REGDB_SOURCE.p7s}}"
 
 need() { command -v "$1" >/dev/null 2>&1 || { echo "missing command: $1" >&2; exit 1; }; }
 need make
@@ -25,7 +32,7 @@ COMMON_Y=(
   CONFIG_UEVENT_HELPER CONFIG_UEVENT_HELPER_PATH="/sbin/hotplug"
   CONFIG_PROC_FS CONFIG_SYSFS CONFIG_TMPFS CONFIG_DEVPTS_FS
   CONFIG_NAMESPACES CONFIG_UTS_NS CONFIG_IPC_NS CONFIG_PID_NS CONFIG_NET_NS CONFIG_FHANDLE
-  CONFIG_BLOCK CONFIG_BLK_DEV CONFIG_EXT4_FS CONFIG_JBD2 CONFIG_FS_MBCACHE
+  CONFIG_BLOCK CONFIG_BLK_DEV CONFIG_EXT4_FS CONFIG_JBD2 CONFIG_FS_MBCACHE CONFIG_FILE_LOCKING
   CONFIG_NET CONFIG_INET CONFIG_PACKET CONFIG_UNIX
   CONFIG_SYSVIPC CONFIG_POSIX_TIMERS CONFIG_FUTEX CONFIG_EPOLL CONFIG_SIGNALFD
   CONFIG_TIMERFD CONFIG_EVENTFD CONFIG_AIO
@@ -70,6 +77,11 @@ set_config_y() {
   done
 }
 
+set_config_str() {
+  local out="$1" sym="$2" value="$3"
+  "$SRC/scripts/config" --file "$out/.config" --set-str "$sym" "$value"
+}
+
 set_config_n() {
   local out="$1"; shift
   local sym
@@ -89,6 +101,14 @@ build_tier() {
   "$SRC/scripts/config" --file "$out/.config" --set-str CONFIG_LOCALVERSION "$localversion"
   "$SRC/scripts/config" --file "$out/.config" --disable CONFIG_LOCALVERSION_AUTO
   set_config_y "$out" "${COMMON_Y[@]}" "$@"
+  # Direct-root tiers request cfg80211 before the ext4 root is mounted. Embed
+  # the signed regulatory database so the early firmware request succeeds.
+  if [ -s "$REGDB_SOURCE" ] && [ -s "$REGDB_SIG_SOURCE" ]; then
+    set_config_str "$out" CONFIG_EXTRA_FIRMWARE "regulatory.db regulatory.db.p7s"
+    set_config_str "$out" CONFIG_EXTRA_FIRMWARE_DIR "$(dirname "$REGDB_SOURCE")"
+  else
+    echo "[kernel:$tier] warning: regulatory.db or regulatory.db.p7s is missing; regdb will not be embedded" >&2
+  fi
   # Explicitly avoid options that are irrelevant to this headless guest.
   set_config_n "$out" CONFIG_MODULES CONFIG_KALLSYMS CONFIG_DEBUG_INFO CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT CONFIG_AUDIT CONFIG_KPROBES CONFIG_TRACING CONFIG_FTRACE CONFIG_BPF_SYSCALL CONFIG_NETFILTER
   make -C "$SRC" O="$out" ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" olddefconfig >/dev/null
