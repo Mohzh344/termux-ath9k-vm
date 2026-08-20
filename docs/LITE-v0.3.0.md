@@ -72,5 +72,5 @@ This script is additive and does not edit or invoke the Full `src/build-image.sh
 
 ## References
 
-1. [Canonical v0.3.0 Full release](https://github.com/Mohzh344/termux-ath9k-vm/releases/tag/v0.3.0)
-2. [Project repository](https://github.com/Mohzh344/termux-ath9k-vm)
+1. [Canonical v0.3.0 Full release](https://github.com/Mohzh344/android-wifi-monitor-injection-rootless/releases/tag/v0.3.0)
+2. [Project repository](https://github.com/Mohzh344/android-wifi-monitor-injection-rootless)

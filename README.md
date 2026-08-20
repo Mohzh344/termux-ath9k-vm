@@ -19,7 +19,7 @@ A real Alpine Linux ARM64 virtual machine for Android/Termux, powered by QEMU. T
 
 ## Download
 
-The recommended installation method is to download the **Full + Lite Unified** archive from the [latest GitHub Release](https://github.com/Mohzh344/termux-ath9k-vm/releases/latest). It contains both ready-to-run VM bundles, their matching kernels and initramfs files, launch scripts, and documentation. The source repository itself intentionally does not store the 2 GiB sparse disk images in Git history; GitHub Release assets are used for large binaries.
+The recommended installation method is to download the **Full + Lite Unified** archive from the [latest GitHub Release](https://github.com/Mohzh344/android-wifi-monitor-injection-rootless/releases/latest). It contains both ready-to-run VM bundles, their matching kernels and initramfs files, launch scripts, and documentation. The source repository itself intentionally does not store the 2 GiB sparse disk images in Git history; GitHub Release assets are used for large binaries.
 
 After downloading `termux-ath9k-vm-v034-full-lite-ready.tar.gz` into Termux, verify the checksum:
 
