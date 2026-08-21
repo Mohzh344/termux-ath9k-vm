@@ -20,6 +20,23 @@ if ps -eo args= | grep -F 'qemu-system-aarch64' | grep -F -- "$IMAGE" | grep -vF
   exit 1
 fi
 
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+STORAGE_LIB="$SCRIPT_DIR/vm-storage-lib.sh"
+[ -r "$STORAGE_LIB" ] || STORAGE_LIB="$SCRIPT_DIR/../../src/vm-storage-lib.sh"
+if [ -r "$STORAGE_LIB" ]; then
+  # shellcheck source=vm-storage-lib.sh
+  . "$STORAGE_LIB"
+fi
+if [ "${CREATE_BACKUP:-1}" != 0 ]; then
+  if command -v vm_backup_image >/dev/null 2>&1; then
+    BACKUP_DIR="${BACKUP_DIR:-$(vm_default_state_root)/backups}"
+    AUTH_BACKUP="$(vm_backup_image "$IMAGE" before-auth "$BACKUP_DIR")"
+    printf 'Created auth-change backup: %s\n' "$AUTH_BACKUP"
+  else
+    printf 'WARNING: storage helper unavailable; auth change continues without automatic backup.\n' >&2
+  fi
+fi
+
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/console-auth.XXXXXX")"
 cleanup(){ rm -rf -- "$WORK"; }
 trap cleanup EXIT INT TERM
@@ -42,11 +59,15 @@ grep -qxF "$ENTRY" "$INI" || { echo 'failed to prepare ttyAMA0 auth entry' >&2; 
 
 write_guest_file(){
   local local_file="$1" guest_file="$2" mode="$3"
-  debugfs -w -R "rm $guest_file" "$IMAGE" >/dev/null 2>&1 || true
-  debugfs -w -R "write $local_file $guest_file" "$IMAGE" >/dev/null
-  debugfs -w -R "set_inode_field $guest_file uid 0" "$IMAGE" >/dev/null
-  debugfs -w -R "set_inode_field $guest_file gid 0" "$IMAGE" >/dev/null
-  debugfs -w -R "set_inode_field $guest_file mode $mode" "$IMAGE" >/dev/null
+  if command -v vm_guest_write_file >/dev/null 2>&1; then
+    vm_guest_write_file "$IMAGE" "$local_file" "$guest_file" "$mode"
+  else
+    debugfs -w -R "rm $guest_file" "$IMAGE" >/dev/null 2>&1 || true
+    debugfs -w -R "write $local_file $guest_file" "$IMAGE" >/dev/null
+    debugfs -w -R "set_inode_field $guest_file uid 0" "$IMAGE" >/dev/null
+    debugfs -w -R "set_inode_field $guest_file gid 0" "$IMAGE" >/dev/null
+    debugfs -w -R "set_inode_field $guest_file mode $mode" "$IMAGE" >/dev/null
+  fi
 }
 
 write_guest_file "$INI" /etc/inittab 0100644

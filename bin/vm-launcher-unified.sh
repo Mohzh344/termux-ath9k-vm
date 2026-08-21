@@ -17,11 +17,23 @@ ENABLE_NET="${ENABLE_NET:-}"
 AUTH_MODE="${AUTH_MODE:-}"
 RTC_BASE="${RTC_BASE:-$(date -u '+%Y-%m-%dT%H:%M:%S')}"
 TIME_SYNC="${TIME_SYNC:-1}"
+VM_STORAGE_ENABLED="${VM_STORAGE_ENABLED:-1}"
 
 say(){ printf '\n==> %s\n' "$*"; }
 warn(){ printf '\nWARNING: %s\n' "$*" >&2; }
 die(){ printf '\nERROR: %s\n' "$*" >&2; exit 1; }
 need(){ command -v "$1" >/dev/null 2>&1 || die "Missing $1. $2"; }
+
+STORAGE_LIB="$BASE_DIR/src/vm-storage-lib.sh"
+[ "$VM_STORAGE_ENABLED" = 0 ] || [ -r "$STORAGE_LIB" ] || die "missing storage helper: $STORAGE_LIB"
+if [ "$VM_STORAGE_ENABLED" != 0 ]; then
+  # Persistent images live outside the release tree. A new archive can therefore
+  # replace launchers and kernels without replacing a user's guest filesystem.
+  . "$STORAGE_LIB"
+  VM_STATE_ROOT="${VM_STATE_ROOT:-$(vm_default_state_root)}"
+  export VM_STATE_ROOT
+  vm_storage_init "$BASE_DIR" "$FULL_DIR" "$LITE_DIR" >/dev/null
+fi
 
 usage(){
   cat <<'EOF'
@@ -83,14 +95,16 @@ if [ -n "$AUTH_MODE" ]; then
 fi
 
 required_full(){
-  local d="$1"
-  [ -f "$d/guest/alpine-ath9k.img" ] &&
+  local d="$1" image="$d/guest/alpine-ath9k.img"
+  [ "$VM_STORAGE_ENABLED" = 0 ] || image="$VM_STATE_ROOT/full/alpine-ath9k.img"
+  [ -f "$image" ] &&
   [ -f "$d/guest/vmlinuz-lts" ] &&
   [ -f "$d/guest/initramfs-lts" ]
 }
 required_lite(){
-  local d="$1"
-  [ -f "$d/guest/alpine-ath9k-v030-lite.img" ] &&
+  local d="$1" image="$d/guest/alpine-ath9k-v030-lite.img"
+  [ "$VM_STORAGE_ENABLED" = 0 ] || image="$VM_STATE_ROOT/lite/alpine-ath9k-v030-lite.img"
+  [ -f "$image" ] &&
   [ -f "$d/guest/vmlinuz-tiny" ] &&
   [ -f "$d/guest/vmlinuz-safe" ] &&
   [ -f "$d/guest/vmlinuz-lts-lite" ] &&
@@ -171,6 +185,17 @@ select_variant(){
 
 bundle_dir(){
   if [ -n "$EXPLICIT_DIR" ]; then printf '%s\n' "$EXPLICIT_DIR"; elif [ "$VARIANT" = full ]; then printf '%s\n' "${candidates_full[0]}"; else printf '%s\n' "${candidates_lite[0]}"; fi
+}
+
+persistent_disk(){
+  local d="$1"
+  if [ "$VM_STORAGE_ENABLED" != 0 ]; then
+    if [ "$VARIANT" = full ]; then printf '%s\n' "$VM_STATE_ROOT/full/alpine-ath9k.img"; else printf '%s\n' "$VM_STATE_ROOT/lite/alpine-ath9k-v030-lite.img"; fi
+  elif [ "$VARIANT" = full ]; then
+    printf '%s\n' "$d/guest/alpine-ath9k.img"
+  else
+    printf '%s\n' "$d/guest/alpine-ath9k-v030-lite.img"
+  fi
 }
 
 choose_lite_tier(){
@@ -284,11 +309,11 @@ choose_usb(){
 print_plan(){
   local d="$1"
   if [ "$VARIANT" = full ]; then
-    printf 'Detected=Full dir=%s disk=%s kernel=vmlinuz-lts initramfs=yes RAM=%s SMP=%s USB=%s net=%s auth=%s rtc=%s\n' \
-      "$d" "${DISK:-$d/guest/alpine-ath9k.img}" "${RAM:-768}" "${SMP:-1}" "${USB_MODE:-none}" "${ENABLE_NET:-1}" "${AUTH_MODE:-root-console}" "$RTC_BASE"
+    printf 'Detected=Full dir=%s disk=%s kernel=vmlinuz-lts initramfs=yes RAM=%s SMP=%s USB=%s net=%s auth=%s rtc=%s storage=%s\n' \
+      "$d" "$DISK" "${RAM:-768}" "${SMP:-1}" "${USB_MODE:-none}" "${ENABLE_NET:-1}" "${AUTH_MODE:-root-console}" "$RTC_BASE" "$VM_STORAGE_ENABLED"
   else
-    printf 'Detected=Lite dir=%s disk=%s tier=%s profile=%s RAM/SMP=profile-default USB=%s net=%s auth=%s rtc=%s\n' \
-      "$d" "${DISK:-$d/guest/alpine-ath9k-v030-lite.img}" "${KERNEL_TIER:-safe}" "${PROFILE:-wifi-only}" "${USB_MODE:-none}" "${ENABLE_NET:-0}" "${AUTH_MODE:-root-console}" "$RTC_BASE"
+    printf 'Detected=Lite dir=%s disk=%s tier=%s profile=%s RAM/SMP=profile-default USB=%s net=%s auth=%s rtc=%s storage=%s\n' \
+      "$d" "$DISK" "${KERNEL_TIER:-safe}" "${PROFILE:-wifi-only}" "${USB_MODE:-none}" "${ENABLE_NET:-0}" "${AUTH_MODE:-root-console}" "$RTC_BASE" "$VM_STORAGE_ENABLED"
   fi
 }
 
@@ -300,8 +325,9 @@ start_usb(){
   mkdir -p "$d/run"
   rm -f "$console" "$d/qemu-monitor.sock" "$d/qemu-lite-monitor.sock" "$d/run/qemu.pid"
   termux-usb -r "$USB_DEVICE" >/dev/null || die 'Android USB permission was denied.'
-  env VM_DIR="$d" PROFILE="${PROFILE:-wifi-only}" KERNEL_TIER="${KERNEL_TIER:-safe}" \
-    DISK="${DISK:-}" KERNEL="${KERNEL:-}" INITRD="${INITRD:-}" RAM="${RAM:-}" SMP="${SMP:-}" \
+      env VM_DIR="$d" PROFILE="${PROFILE:-wifi-only}" KERNEL_TIER="${KERNEL_TIER:-safe}" \
+    DISK="$DISK" KERNEL="${KERNEL:-}" INITRD="${INITRD:-}" RAM="${RAM:-}" SMP="${SMP:-}" \
+
     ENABLE_NET="$ENABLE_NET" AUTH_MODE="$AUTH_MODE" RTC_BASE="$RTC_BASE" TIME_SYNC="$TIME_SYNC" USB_MODE=direct SERIAL_MODE=unix CONSOLE_SOCKET="$console" PIDFILE="$d/run/qemu.pid" \
     termux-usb -E -e "$inner" "$USB_DEVICE" >"$log" 2>&1 & USB_PID=$!
   trap 'kill "$USB_PID" 2>/dev/null || true' INT TERM EXIT
@@ -319,6 +345,7 @@ main(){
   [ -t 0 ] && [ -t 1 ] || NONINTERACTIVE=1
   select_variant
   local d; d="$(bundle_dir)"
+  DISK="${DISK:-$(persistent_disk "$d")}"
   if [ "$VARIANT" = full ]; then choose_full_resources; else choose_lite_tier; choose_lite_profile; fi
   choose_auth_mode
   choose_usb
@@ -331,7 +358,7 @@ main(){
     else
       say 'Starting Full with the existing linux-lts + initramfs path.'
       full_args=("$BASE_DIR/bin/launch-vm-full-unified.sh")
-      env_args=("VM_DIR=$d" "DISK=${DISK:-$d/guest/alpine-ath9k.img}" "KERNEL=${KERNEL:-$d/guest/vmlinuz-lts}" "INITRD=${INITRD:-$d/guest/initramfs-lts}" "RAM=$RAM" "SMP=$SMP" "ENABLE_NET=$ENABLE_NET" "AUTH_MODE=$AUTH_MODE" "RTC_BASE=$RTC_BASE" "TIME_SYNC=$TIME_SYNC" "USB_MODE=${USB_MODE:-none}" "TCG_THREAD=${TCG_THREAD:-auto}" "SERIAL_MODE=${SERIAL_MODE:-stdio}" "SHARE_DIR=${SHARE_DIR:-$HOME}")
+      env_args=("VM_DIR=$d" "DISK=$DISK" "KERNEL=${KERNEL:-$d/guest/vmlinuz-lts}" "INITRD=${INITRD:-$d/guest/initramfs-lts}" "RAM=$RAM" "SMP=$SMP" "ENABLE_NET=$ENABLE_NET" "AUTH_MODE=$AUTH_MODE" "RTC_BASE=$RTC_BASE" "TIME_SYNC=$TIME_SYNC" "USB_MODE=${USB_MODE:-none}" "TCG_THREAD=${TCG_THREAD:-auto}" "SERIAL_MODE=${SERIAL_MODE:-stdio}" "SHARE_DIR=${SHARE_DIR:-$HOME}")
       exec env "${env_args[@]}" "${full_args[@]}"
     fi
   elif [ "${USB_MODE:-none}" = direct ]; then
@@ -339,7 +366,7 @@ main(){
   else
     say 'Starting Lite without USB passthrough.'
     lite_args=("$d/bin/launch-vm-lite.sh")
-    env_args=("PROFILE=${PROFILE:-wifi-only}" "KERNEL_TIER=${KERNEL_TIER:-safe}" "DISK=${DISK:-$d/guest/alpine-ath9k-v030-lite.img}" "ENABLE_NET=$ENABLE_NET" "AUTH_MODE=$AUTH_MODE" "RTC_BASE=$RTC_BASE" "TIME_SYNC=$TIME_SYNC" "USB_MODE=${USB_MODE:-none}" "TCG_THREAD=${TCG_THREAD:-multi}")
+    env_args=("PROFILE=${PROFILE:-wifi-only}" "KERNEL_TIER=${KERNEL_TIER:-safe}" "DISK=$DISK" "ENABLE_NET=$ENABLE_NET" "AUTH_MODE=$AUTH_MODE" "RTC_BASE=$RTC_BASE" "TIME_SYNC=$TIME_SYNC" "USB_MODE=${USB_MODE:-none}" "TCG_THREAD=${TCG_THREAD:-multi}")
     [ -z "${RAM:-}" ] || env_args+=("RAM=$RAM")
     [ -z "${SMP:-}" ] || env_args+=("SMP=$SMP")
     [ -z "${CPU_MODEL:-}" ] || env_args+=("CPU_MODEL=$CPU_MODEL")

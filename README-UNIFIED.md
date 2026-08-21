@@ -1,87 +1,277 @@
-# termux-ath9k-vm — Full + Lite Unified Bundle
+# Android Wi-Fi Monitor and Injection Rootless VM
 
-This archive contains the canonical **v0.3.0 Full** VM and the corrected additive **v0.3.4 Lite** VM in one download. The v0.3.4 release keeps the original v0.3.0 tag available while applying the console-shell/PATH correction and writable-root fix to the bundled Full guest.
+This archive contains the canonical **Full** VM and compact **Lite** VM for running an Alpine Linux ARM64 virtual machine on Android/Termux without Android root. QEMU TCG provides the virtual machine, and the guest can receive an Android-authorized USB adapter such as the Atheros AR9271 through Termux:API.
+
+> **Important status:** The VM boot, persistent-image, and local QEMU paths are testable in the development environment. Physical AR9271 OTG passthrough, Android USB permissions, and adapter power stability must still be verified on the target phone.
+
+## What is new in v0.3.5
+
+The release now separates **release files** from **writable guest data**. Full and Lite images are adopted into a persistent storage directory on first installation. Updating the archive replaces launchers, scripts, kernels, and documentation without replacing the user's guest image, installed apk packages, PATH files, or `/root` data.
+
+Lite `tiny`, `safe`, and `lts` are kernel choices over the same Lite image. Switching between them does not reinstall packages. For Lite-to-Full or Full-to-Lite migration, the project provides an allow-listed portable export/import flow rather than copying an incompatible filesystem image.
 
 ## Quick start in Termux
 
-Extract the archive, enter its directory, and install the host dependencies once:
+Download an archive from the [latest GitHub Release](https://github.com/Mohzh344/android-wifi-monitor-injection-rootless/releases/latest). Choose the full archive for a new installation and the smaller update archive when a persistent Full/Lite image already exists:
+
+| Archive | Intended user | Contains writable images? |
+|---|---|---:|
+| `termux-ath9k-vm-v035-full-lite-ready.tar.gz` | New installation or migration from an older checkout | Yes, for first adoption |
+| `termux-ath9k-vm-v035-update.tar.gz` | Existing v0.3.x installation | No; it preserves storage and saves about 290 MB of compressed download |
+
+For a new installation, verify the published checksum and extract the full archive into a new directory:
 
 ```sh
-cd termux-ath9k-vm-full-lite
+sha256sum -c termux-ath9k-vm-v035-full-lite-ready.tar.gz.sha256
+mkdir -p "$HOME/android-wifi-vm-v035"
+tar --sparse -xzf termux-ath9k-vm-v035-full-lite-ready.tar.gz \
+  -C "$HOME/android-wifi-vm-v035" --strip-components=1
+cd "$HOME/android-wifi-vm-v035"
+```
+
+Install host dependencies once:
+
+```sh
+bash bin/install-termux.sh
+```
+
+The installer creates the persistent storage directory and adopts any bundled Full/Lite image that does not already have a persistent copy. It never overwrites an existing persistent image. Start the recommended launcher with:
+
+```sh
+bash bin/vm-launcher.sh
+```
+
+The launcher detects Full and Lite, asks which variant to use, offers the Lite kernel tier, asks whether the guest may use the Internet, synchronizes the guest clock from Android at every launch, handles console authentication, and optionally requests Android USB permission.
+
+## Persistent storage and safe upgrades
+
+By default, writable images are stored outside the release directory:
+
+```text
+$XDG_DATA_HOME/android-wifi-monitor-injection-rootless/
+  full/alpine-ath9k.img
+  lite/alpine-ath9k-v030-lite.img
+  backups/
+  exports/
+```
+
+When `XDG_DATA_HOME` is not set, the default is:
+
+```text
+$HOME/.local/share/android-wifi-monitor-injection-rootless/
+```
+
+The location can be changed explicitly before running the installer or launcher:
+
+```sh
+export VM_STATE_ROOT="$HOME/android-wifi-vm-data"
 bash bin/install-termux.sh
 bash bin/vm-launcher.sh
 ```
 
-The unified launcher detects complete Full and Lite bundles. If both are present, it asks which one to use, then offers console authentication modes, and asks `Grant Internet access to this VM? [y/N]:`. The recommended `root-console` mode starts `/bin/sh -l` directly as root; `login` selects BusyBox `getty` for a username/password prompt using the existing root password; `login-empty` clears root's password for private local testing only. The `-l` flag only reads `/etc/profile` and `/etc/profile.d`; it does not invoke `/sbin/login`. The launcher also seeds QEMU's RTC from the Android/Termux host clock and explicitly runs `date -u -s` inside the guest after the local root prompt at every launch. It does not rebuild, delete, or overwrite a disk image automatically.
+The first installer run with the full archive moves or sparsely copies the bundled images into this directory. The thin update archive has no disk image by design and reuses the existing persistent image. Subsequent archives do not replace an existing image. The release directory can therefore be removed or replaced after the installer reports successful adoption.
 
-For a non-interactive or scripted selection:
-
-```sh
-VM_VARIANT=full AUTH_MODE=root-console bash bin/vm-launcher.sh --non-interactive
-VM_VARIANT=full AUTH_MODE=login ENABLE_NET=0 bash bin/vm-launcher.sh --non-interactive
-VM_VARIANT=lite KERNEL_TIER=safe PROFILE=wifi-only AUTH_MODE=root-console ENABLE_NET=0 bash bin/vm-launcher.sh --non-interactive
-# Private local testing only:
-VM_VARIANT=lite AUTH_MODE=login-empty ENABLE_NET=0 bash bin/vm-launcher.sh --non-interactive
-```
-
-Use `--dry-run` to verify detection and the selected settings without starting QEMU:
+For an existing installation, extract the thin update archive into a different directory and run the installer before deleting the old checkout:
 
 ```sh
-bash bin/vm-launcher.sh --dry-run
-bash bin/vm-launcher.sh --full --dry-run
-bash bin/vm-launcher.sh --lite --dry-run
+mkdir -p "$HOME/android-wifi-vm-v035-update"
+tar --sparse -xzf termux-ath9k-vm-v035-update.tar.gz \
+  -C "$HOME/android-wifi-vm-v035-update" --strip-components=1
+cd "$HOME/android-wifi-vm-v035-update"
+VM_LEGACY_DIR="$HOME/old/termux-ath9k-vm-full-lite" \
+  bash bin/install-termux.sh
 ```
 
-## Which variant should I use?
+If the old image was already adopted into the default storage directory, omit `VM_LEGACY_DIR`; the installer will keep that image and update only the release files.
 
-| Variant | Best for | Kernel path |
+### Existing v0.3.4 or older checkout
+
+Extract the full or thin update archive into a different directory. Before deleting the old checkout, run the installer from the new directory and point it at the old one:
+
+```sh
+cd "$HOME/android-wifi-vm-v035"
+VM_LEGACY_DIR="$HOME/old/termux-ath9k-vm-full-lite" \
+  bash bin/install-termux.sh
+```
+
+The old checkout must contain `full/` and/or `lite/` with their guest image files. The installer adopts each image only when the corresponding persistent image is absent. It does not copy or overwrite a persistent image that already exists.
+
+For isolated legacy/debug behavior, disable the storage layer explicitly:
+
+```sh
+VM_STORAGE_ENABLED=0 bash bin/vm-launcher.sh --lite --dry-run --non-interactive
+```
+
+## Backups and migration
+
+A backup is a sparse-aware copy of a complete Full or Lite image. The VM must be stopped:
+
+```sh
+bash bin/vm-backup.sh --lite
+bash bin/vm-backup.sh --full
+```
+
+The auth configurator and importer also create safety backups by default. Never edit an image with `debugfs`, `e2fsck`, or a migration command while QEMU is using it.
+
+A portable export is smaller and better for moving a working environment between variants. It contains `/root`, `/home`, `/opt`, `/usr/local`, `/etc/profile.d`, and `/etc/apk/world`:
+
+```sh
+bash bin/vm-export.sh --lite
+```
+
+Import it into a stopped target image:
+
+```sh
+bash bin/vm-import.sh --full /path/to/lite-user-data-YYYYMMDDTHHMMSSZ.tar.gz
+```
+
+The importer restores user files, local tools, persistent PATH files, and the explicitly requested apk package list. It writes the package list to `/root/.vm-migration/apk-world` and creates:
+
+```sh
+/root/.vm-migration/apply-packages.sh
+```
+
+Boot the target with Internet access only when needed, then run that helper as root:
+
+```sh
+/root/.vm-migration/apply-packages.sh
+```
+
+The helper uses the target's apk repositories and signatures. It does not copy packages blindly from the old filesystem, and it does not disable apk signature verification.
+
+Authentication databases, `/etc/inittab`, apk repositories, kernels, firmware, and `/lib/modules` are intentionally excluded from portable exports. Reconfigure `root-console`, `login`, or `login-empty` with the launcher instead of copying `/etc/shadow` or `/etc/passwd` between images.
+
+Export archives can contain private files from `/root`. Store them securely and delete them when they are no longer needed.
+
+## Selecting Full, Lite, and kernel tiers
+
+| Choice | Use case | Image behavior |
 |---|---|---|
-| **Full** | The original complete v0.3.0 environment with its existing tools, networking, 9p share, and recovery/manual helpers; v0.3.4 adds writable root mounting for password changes | Alpine `linux-lts` plus initramfs |
-| **Lite / safe** | Recommended everyday AR9271/ath9k_htc use on Android with a compatibility-oriented custom kernel, working post-boot apk installation, and direct login-shell PATH | Direct-root `vmlinuz-safe` |
-| **Lite / tiny** | AR9271-only use when the smallest custom kernel is preferred; it now includes the file-locking support required by apk | Direct-root `vmlinuz-tiny` |
-| **Lite / lts** | Fallback troubleshooting path if a custom Lite tier does not boot on a particular setup | Lite linux-lts plus initramfs |
+| **Full** | The complete environment with its original v0.3.0 guest lineage, Linux LTS kernel/initramfs, networking, and broader utilities | Uses persistent Full image |
+| **Lite / safe** | Recommended everyday AR9271 use with the compatibility-oriented custom kernel | Uses the shared persistent Lite image |
+| **Lite / tiny** | Smallest custom kernel for an AR9271-focused setup | Uses the same Lite image as safe |
+| **Lite / lts** | Fallback troubleshooting kernel and initramfs | Uses the same Lite image as safe |
 
-Tier A and Tier B are kernel builds, not Wi-Fi monitor-mode switches. Both Lite custom tiers contain the required ath9k_htc, cfg80211, mac80211, XHCI, virtio, ext4, and file-locking support. Wi-Fi operations remain inside the guest and should only be performed on networks and devices you own or are authorized to test.
+The Lite tiers are not monitor-mode switches. They are different boot kernels. Wireless operations remain inside the Alpine guest and require a compatible adapter and authorized network.
 
-## USB passthrough
+## Launcher examples
 
-The launcher can list Android-visible USB devices and request permission through Termux:API. For the AR9271, use the direct USB path when the adapter is connected through OTG. If no USB device is selected, the VM starts with a normal console and no passthrough.
-
-The original Full USB wrappers and Lite USB wrappers remain inside their respective nested directories. The unified launcher delegates to those existing low-level paths rather than changing their QEMU or `TERMUX_USB_FD` behavior.
-
-After the variant, Lite tier/profile, and USB choices, the launcher asks whether to grant Internet access. `y` sets `ENABLE_NET=1`; `n` sets `ENABLE_NET=0`. In non-interactive mode, Full preserves its historical online default while Lite remains offline unless `ENABLE_NET=1` is supplied. When `ENABLE_NET=1` is set, the guest brings up the virtio interface with DHCP and uses the QEMU DNS proxy automatically. `install-wifi-tools` refuses clearly when no guest network is available. It uses HTTPS first; if the guest/network path reports a certificate-verification failure, the installer can use its explicitly documented package-signature-checked fallback. Set `APK_ALLOW_INSECURE_FALLBACK=0` to require strict TLS certificate validation. At every launch, QEMU receives `RTC_BASE` from the Android/Termux clock and the adapter explicitly runs `date -u -s` inside Alpine after the root console is ready, so the guest system clock matches Android even when no `/dev/rtc` device is exposed by the minimal ARM64 kernel.
-
-## Bundle layout
-
-```text
-termux-ath9k-vm-full-lite/
-├── bin/vm-launcher.sh              # unified recommended entry point
-├── bin/vm-launcher-unified.sh      # same dispatcher, explicit name
-├── bin/launch-vm-full-unified.sh   # Full adapter for RTC and optional Internet
-├── bin/install-termux.sh           # host dependency installer
-├── full/                           # Full v0.3.0 guest plus documented v0.3.4 adapter patch
-│   ├── bin/
-│   ├── guest/alpine-ath9k.img
-│   └── guest/vmlinuz-lts + initramfs-lts
-├── lite/                           # corrected additive Lite v0.3.4 bundle
-│   ├── bin/
-│   ├── guest/alpine-ath9k-v030-lite.img
-│   └── guest/vmlinuz-tiny/safe/lts-lite
-└── docs/UNIFIED-RELEASE.md
-```
-
-The nested Full guest is sourced from the published Full release, then receives the documented console-shell/PATH patch and the v0.3.4 writable-root launcher fix. The original Full tag remains unchanged; the bundled Full image is intentionally patched so `passwd` can persist changes. The Lite guest is patched and its builder/source script is updated equivalently. The top-level dispatcher offers explicit authentication modes, the optional Internet prompt, and Android-clock RTC seeding.
-
-## Advanced and build scripts
-
-The normal boot flow uses only `bin/vm-launcher.sh`. Build, packaging, benchmark, recovery, and low-level launch scripts remain separate so they can be tested and used independently. No build is triggered merely because an image is absent; use the documented build scripts explicitly when preparing a development checkout.
-
-## Integrity
-
-Verify the downloaded archive before extraction using the published `.sha256` file:
+Interactive use:
 
 ```sh
-sha256sum -c termux-ath9k-vm-full-lite-ready.tar.gz.sha256
+bash bin/vm-launcher.sh
 ```
 
-This project is intended for authorized wireless testing and general Linux experimentation on hardware and networks for which you have permission.
+Non-interactive Full with direct root console and no guest Internet:
+
+```sh
+VM_VARIANT=full AUTH_MODE=root-console ENABLE_NET=0 \
+  bash bin/vm-launcher.sh --non-interactive
+```
+
+Non-interactive Lite safe with Internet disabled:
+
+```sh
+VM_VARIANT=lite KERNEL_TIER=safe PROFILE=wifi-only \
+  AUTH_MODE=root-console ENABLE_NET=0 \
+  bash bin/vm-launcher.sh --non-interactive
+```
+
+A dry run prints selection and the persistent disk without starting QEMU:
+
+```sh
+bash bin/vm-launcher.sh --full --dry-run --non-interactive
+bash bin/vm-launcher.sh --lite --dry-run --non-interactive
+```
+
+## Console authentication
+
+`root-console` is the recommended local mode. It starts `/bin/sh -l` directly as root, reads `/etc/profile` and `/etc/profile.d`, and does not ask for a username or password.
+
+`login` uses BusyBox `getty` and a normal username/password prompt. `login-empty` intentionally clears the root password for private local testing only. Do not combine `login-empty` with Internet access or an untrusted console.
+
+The `-l` in `/bin/sh -l` means login shell; it does not invoke a password login manager. It is what makes persistent PATH files load in the direct root console. A PATH added with `export PATH=...` in one shell remains temporary. A PATH written to `/etc/profile.d/tool-name.sh` remains available after reboot and in both root-console and normal login modes.
+
+## USB passthrough for AR9271
+
+Connect the adapter through OTG and let Android expose it to Termux:
+
+```sh
+termux-usb -l
+```
+
+The unified launcher can select an Android-visible device and request permission. For the AR9271, the direct QEMU path matches USB ID `0cf3:9271`:
+
+```sh
+bash bin/vm-launcher.sh
+```
+
+Inside Alpine, verify the adapter non-destructively:
+
+```sh
+wifi-diagnose
+lsusb
+iw dev
+```
+
+Seeing the device in `lsusb` alone does not prove that `ath9k_htc` loaded or that firmware was found. Direct passthrough is attempted first; the optional usb-redir wrapper remains available for compatibility testing.
+
+If OTG disconnects repeatedly, test a short high-quality OTG cable and a charge-through/Y-OTG arrangement with an appropriate 5 V source. The guest cannot repair an Android-side power or permission reset.
+
+## Internet and clock policy
+
+The launcher asks for guest Internet access on every interactive run. `ENABLE_NET=1` enables QEMU user networking and DHCP; `ENABLE_NET=0` keeps the guest offline. The non-interactive default is Full online for historical compatibility and Lite offline; set `ENABLE_NET` explicitly in scripts.
+
+QEMU receives an RTC base from the Android/Termux clock, and the launcher explicitly synchronizes Alpine's system clock after the console becomes ready. Set `TIME_SYNC=0` only for deterministic debugging.
+
+## Rebuilding
+
+Rebuilding is optional. On a supported Linux/ARM64-capable build host:
+
+```sh
+./src/download-artifacts.sh
+./src/build-image.sh
+```
+
+The combined release packager for this feature is:
+
+```sh
+./src/package-v035-unified-release.sh
+```
+
+It expects the pinned Full/Lite build inputs described by its environment variables and emits a sparse-aware archive plus checksum. Set `INCLUDE_IMAGES=0` and choose an update output path to build the thin archive for existing users. The original `v0.3.0` Full release remains a historical source and is not rewritten by this feature.
+
+## Project layout
+
+| Path | Purpose |
+|---|---|
+| `bin/vm-launcher.sh` | Recommended Full/Lite dispatcher using persistent images |
+| `bin/vm-launcher-unified.sh` | Explicit name for the same dispatcher |
+| `bin/vm-launcher-legacy.sh` | Preserved pre-storage launcher for advanced legacy use |
+| `bin/vm-backup.sh` | Sparse-aware Full/Lite image backup |
+| `bin/vm-export.sh` | Portable user-data and apk-world export |
+| `bin/vm-import.sh` | Safe allow-listed import into a stopped target image |
+| `src/vm-storage-lib.sh` | Shared adoption, lock, backup, and ext4 helpers |
+| `src/install-termux-unified.sh` | Host dependency installer and image adoption step |
+| `src/configure-console-auth.sh` | Offline auth-mode change with backup and ext4 validation |
+| `src/test-unified-launcher.sh` | Launcher detection and selection tests |
+| `src/test-migration-debug.sh` | Real sparse-image export/import test fixture |
+| `src/test-persistent-storage.sh` | Persistent-image reuse, backup, and Lite-to-Full test |
+| `src/test-auth-boot-matrix.sh` | Full/Lite boot matrix for all three auth modes |
+| `src/test-login-sessions.sh` | Real serial-session credential test |
+| `src/package-v035-unified-release.sh` | v0.3.5 full and thin release packager |
+| `docs/RELEASE-v0.3.5.md` | v0.3.5 migration and verification notes |
+
+## Safety and legal use
+
+Use monitor mode and packet transmission only on networks and devices that you own or are explicitly authorized to assess. This project does not include automated credential theft, client disruption, WPS cracking, or unauthorized access. Regulatory-domain and transmit-power limits must not be bypassed.
+
+## References
+
+[1] [QEMU ARM `virt` machine documentation](https://www.qemu.org/docs/master/system/arm/virt.html) — virtual ARM machine configuration used by the launchers.
+
+[2] [Termux:API project](https://github.com/termux/termux-api) — Android-facing APIs used for USB permission and host clock integration.
+
+[3] [Alpine Package Keeper (`apk`) documentation](https://wiki.alpinelinux.org/wiki/Alpine_Package_Keeper) — package installation and signature-preserving migration behavior.
+
+[4] [Project repository](https://github.com/Mohzh344/android-wifi-monitor-injection-rootless) — source, release assets, and issue tracker.

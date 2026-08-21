@@ -23,3 +23,6 @@ build-output/
 .DS_Store
 .idea/
 .vscode/
+
+# Local release archives; publish them as GitHub Release assets, not Git blobs
+dist/
