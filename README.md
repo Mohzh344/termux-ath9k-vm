@@ -16,7 +16,27 @@ Lite `tiny`, `safe`, and `lts` are kernel choices over the same Lite image. Swit
 
 ## Quick start in Termux
 
-Download an archive from the [latest GitHub Release](https://github.com/Mohzh344/android-wifi-monitor-injection-rootless/releases/latest). Choose the full archive for a new installation and the smaller update archive when a persistent Full/Lite image already exists:
+For the simplest installation or upgrade, use the maintained Python installer. It downloads the latest release metadata, selects the full or thin archive, verifies SHA-256, preserves the external VM data directory, runs the project installer, verifies the resulting launchers, and removes the old checkout only after successful installation:
+
+```sh
+curl -fL https://raw.githubusercontent.com/Mohzh344/android-wifi-monitor-injection-rootless/main/tools/install_android_wifi_vm.py \
+  -o install_android_wifi_vm.py
+chmod +x install_android_wifi_vm.py
+python3 install_android_wifi_vm.py
+```
+
+The normal command asks before deleting an existing checkout. To select a custom location and automatically approve deletion after successful installation:
+
+```sh
+python3 install_android_wifi_vm.py \
+  --project-dir "$HOME/android-wifi-monitor-injection-rootless" \
+  --state-dir "$HOME/.local/share/android-wifi-monitor-injection-rootless" \
+  --yes
+```
+
+Use `--dry-run` to inspect the latest release and paths without downloading or changing anything. Use `--download-only` to download and verify an archive without extracting, installing, or deleting anything. The script cannot change the parent shell's current directory; after it completes, enter the new checkout explicitly with `cd` as shown in its output.
+
+For manual installation, download an archive from the [latest GitHub Release](https://github.com/Mohzh344/android-wifi-monitor-injection-rootless/releases/latest). Choose the full archive for a new installation and the smaller update archive when a persistent Full/Lite image already exists:
 
 | Archive | Intended user | Contains writable images? |
 |---|---|---:|
@@ -291,6 +311,7 @@ It expects the pinned Full/Lite build inputs described by its environment variab
 
 | Path | Purpose |
 |---|---|
+| `tools/install_android_wifi_vm.py` | Verified fresh-install and upgrade helper for Termux |
 | `bin/vm-launcher.sh` | Recommended Full/Lite dispatcher using persistent images |
 | `bin/vm-launcher-unified.sh` | Compatibility wrapper for the main dispatcher |
 | `bin/vm-launcher-legacy.sh` | Preserved pre-storage launcher for advanced legacy use |

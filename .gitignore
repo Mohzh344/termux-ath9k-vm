@@ -26,4 +26,4 @@ build-output/
 
 # Local release archives; publish them as GitHub Release assets, not Git blobs
 dist/
-src/__pycache__/
+__pycache__/
