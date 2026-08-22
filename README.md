@@ -4,11 +4,15 @@ This archive contains the canonical **Full** VM and compact **Lite** VM for runn
 
 > **Important status:** The VM boot, persistent-image, and local QEMU paths are testable in the development environment. Physical AR9271 OTG passthrough, Android USB permissions, and adapter power stability must still be verified on the target phone.
 
-## What is new in v0.3.6
+## What is new in v0.3.7
 
-The release keeps the v0.3.5 persistent-image design and adds a single host administration interface: `bin/vmctl.sh`. It combines readiness diagnostics, VM information, status, backups, portable export/import, image resizing, persistent PATH management, and Android USB diagnostics. The older `vm-backup.sh`, `vm-export.sh`, and `vm-import.sh` names remain as short compatibility wrappers rather than separate implementations.
+The release keeps the persistent-image and unified-administration design from v0.3.6 and adds two purpose-specific shell entry points. `install.sh` is the general bootstrap installer for a new user with no existing checkout. `bin/awvm-update.sh` is bundled with the project and updates an existing checkout from the latest GitHub Release while preserving external VM data.
 
-The release also adds an atomic image-operation lock. Backup, import, resize, and persistent PATH changes refuse to run concurrently on the same image, and stale locks are recoverable after an interrupted Termux process.
+The default project directory is now the short, memorable `$HOME/awvm`. The default new data directory is `$HOME/.local/share/awvm`. Existing data from v0.3.5/v0.3.6 under `$HOME/.local/share/android-wifi-monitor-injection-rootless` is detected and reused before the short path is selected, so users do not receive duplicate images.
+
+The updater downloads and verifies the thin archive, keeps the old checkout available while the installer adopts Full/Lite images, replaces the checkout only after success, and can keep an old checkout backup with `--keep-old`. The Python bootstrap helper from v0.3.6 is no longer part of the project; the supported workflow is shell-only and Termux-native.
+
+The release also keeps the atomic image-operation lock. Backup, import, resize, and persistent PATH changes refuse to run concurrently on the same image, and stale locks are recoverable after an interrupted Termux process.
 
 Full and Lite images are adopted into a persistent storage directory on first installation. Updating the archive replaces launchers, scripts, kernels, and documentation without replacing the user's guest image, installed apk packages, PATH files, or `/root` data.
 
@@ -16,41 +20,47 @@ Lite `tiny`, `safe`, and `lts` are kernel choices over the same Lite image. Swit
 
 ## Quick start in Termux
 
-For the simplest installation or upgrade, use the maintained Python installer. It downloads the latest release metadata, selects the full or thin archive, verifies SHA-256, preserves the external VM data directory, runs the project installer, verifies the resulting launchers, and removes the old checkout only after successful installation:
+For a new installation, use the general bootstrap installer. It installs the small host prerequisites, downloads the latest full archive, verifies SHA-256, creates the short `$HOME/awvm` project directory, and installs the VM:
 
 ```sh
-curl -fL https://raw.githubusercontent.com/Mohzh344/android-wifi-monitor-injection-rootless/main/tools/install_android_wifi_vm.py \
-  -o install_android_wifi_vm.py
-chmod +x install_android_wifi_vm.py
-python3 install_android_wifi_vm.py
+pkg update -y
+pkg install -y bash curl tar coreutils
+curl -fL https://raw.githubusercontent.com/Mohzh344/android-wifi-monitor-injection-rootless/main/install.sh \
+  -o install.sh
+bash install.sh
 ```
 
-The normal command asks before deleting an existing checkout. To select a custom location and automatically approve deletion after successful installation:
+For an existing installation, enter the current project and run the bundled updater:
 
 ```sh
-python3 install_android_wifi_vm.py \
-  --project-dir "$HOME/android-wifi-monitor-injection-rootless" \
-  --state-dir "$HOME/.local/share/android-wifi-monitor-injection-rootless" \
-  --yes
+cd "$HOME/awvm"
+bash bin/awvm-update.sh
 ```
 
-Use `--dry-run` to inspect the latest release and paths without downloading or changing anything. Use `--download-only` to download and verify an archive without extracting, installing, or deleting anything. The script cannot change the parent shell's current directory; after it completes, enter the new checkout explicitly with `cd` as shown in its output.
+The updater asks before replacing the checkout. It downloads the thin update archive, verifies SHA-256, preserves the external VM data and installed packages, then replaces the old project only after installation succeeds. Use `--yes` to skip the final confirmation, `--keep-old` to retain a dated old-checkout backup, or `--check` to check the latest version without downloading or changing anything.
+
+If your old project is not `$HOME/awvm`, run its updater using its actual path:
+
+```sh
+cd "/path/to/your/current/project"
+bash bin/awvm-update.sh
+```
 
 For manual installation, download an archive from the [latest GitHub Release](https://github.com/Mohzh344/android-wifi-monitor-injection-rootless/releases/latest). Choose the full archive for a new installation and the smaller update archive when a persistent Full/Lite image already exists:
 
 | Archive | Intended user | Contains writable images? |
 |---|---|---:|
-| `termux-ath9k-vm-v036-full-lite-ready.tar.gz` | New installation or migration from an older checkout | Yes, for first adoption |
-| `termux-ath9k-vm-v036-update.tar.gz` | Existing v0.3.x installation | No; it preserves storage and saves about 290 MB of compressed download |
+| `termux-ath9k-vm-v037-full-lite-ready.tar.gz` | New installation or migration from an older checkout | Yes, for first adoption |
+| `termux-ath9k-vm-v037-update.tar.gz` | Existing v0.3.x installation | No; it preserves storage and saves about 290 MB of compressed download |
 
 For a new installation, verify the published checksum and extract the full archive into a new directory:
 
 ```sh
-sha256sum -c termux-ath9k-vm-v036-full-lite-ready.tar.gz.sha256
-mkdir -p "$HOME/android-wifi-vm-v036"
-tar --sparse -xzf termux-ath9k-vm-v036-full-lite-ready.tar.gz \
-  -C "$HOME/android-wifi-vm-v036" --strip-components=1
-cd "$HOME/android-wifi-vm-v036"
+sha256sum -c termux-ath9k-vm-v037-full-lite-ready.tar.gz.sha256
+mkdir -p "$HOME/awvm"
+tar --sparse -xzf termux-ath9k-vm-v037-full-lite-ready.tar.gz \
+  -C "$HOME/awvm" --strip-components=1
+cd "$HOME/awvm"
 ```
 
 Install host dependencies once:
@@ -79,7 +89,7 @@ The launcher detects Full and Lite, asks which variant to use, offers the Lite k
 By default, writable images are stored outside the release directory:
 
 ```text
-$XDG_DATA_HOME/android-wifi-monitor-injection-rootless/
+$XDG_DATA_HOME/awvm/
   full/alpine-ath9k.img
   lite/alpine-ath9k-v030-lite.img
   backups/
@@ -89,8 +99,10 @@ $XDG_DATA_HOME/android-wifi-monitor-injection-rootless/
 When `XDG_DATA_HOME` is not set, the default is:
 
 ```text
-$HOME/.local/share/android-wifi-monitor-injection-rootless/
+$HOME/.local/share/awvm/
 ```
+
+For compatibility, an existing `$HOME/.local/share/android-wifi-monitor-injection-rootless` directory is preferred automatically when it contains the old persistent images. Set `VM_STATE_ROOT` explicitly if you want to choose another location.
 
 The location can be changed explicitly before running the installer or launcher:
 
@@ -102,27 +114,33 @@ bash bin/vm-launcher.sh
 
 The first installer run with the full archive moves or sparsely copies the bundled images into this directory. The thin update archive has no disk image by design and reuses the existing persistent image. Subsequent archives do not replace an existing image. The release directory can therefore be removed or replaced after the installer reports successful adoption.
 
-For an existing installation, extract the thin update archive into a different directory and run the installer before deleting the old checkout:
+For an existing installation, the recommended approach is to run the bundled updater from the current checkout:
 
 ```sh
-mkdir -p "$HOME/android-wifi-vm-v036-update"
-tar --sparse -xzf termux-ath9k-vm-v036-update.tar.gz \
-  -C "$HOME/android-wifi-vm-v036-update" --strip-components=1
-cd "$HOME/android-wifi-vm-v036-update"
-VM_LEGACY_DIR="$HOME/old/termux-ath9k-vm-full-lite" \
+cd "$HOME/awvm"
+bash bin/awvm-update.sh
+```
+
+If you prefer manual replacement, extract the thin update archive into a different directory and run the installer before deleting the old checkout:
+
+```sh
+mkdir -p "$HOME/awvm-update"
+tar --sparse -xzf termux-ath9k-vm-v037-update.tar.gz \
+  -C "$HOME/awvm-update" --strip-components=1
+cd "$HOME/awvm-update"
+VM_LEGACY_DIR="$HOME/awvm" \
   bash bin/install-termux.sh
 ```
 
 If the old image was already adopted into the default storage directory, omit `VM_LEGACY_DIR`; the installer will keep that image and update only the release files.
 
-### Existing v0.3.4 or older checkout
+### Existing v0.3.6 or older checkout
 
 Extract the full or thin update archive into a different directory. Before deleting the old checkout, run the installer from the new directory and point it at the old one:
 
 ```sh
-cd "$HOME/android-wifi-vm-v036"
-VM_LEGACY_DIR="$HOME/old/termux-ath9k-vm-full-lite" \
-  bash bin/install-termux.sh
+cd "$HOME/awvm"
+bash bin/awvm-update.sh
 ```
 
 The old checkout must contain `full/` and/or `lite/` with their guest image files. The installer adopts each image only when the corresponding persistent image is absent. It does not copy or overwrite a persistent image that already exists.
@@ -302,7 +320,7 @@ Rebuilding is optional. On a supported Linux/ARM64-capable build host:
 The combined release packager for this feature is:
 
 ```sh
-./src/package-v036-unified-release.sh
+./src/package-v037-unified-release.sh
 ```
 
 It expects the pinned Full/Lite build inputs described by its environment variables and emits a sparse-aware archive plus checksum. Set `INCLUDE_IMAGES=0` and choose an update output path to build the thin archive for existing users. The original `v0.3.0` Full release remains a historical source and is not rewritten by this feature.
@@ -311,7 +329,8 @@ It expects the pinned Full/Lite build inputs described by its environment variab
 
 | Path | Purpose |
 |---|---|
-| `tools/install_android_wifi_vm.py` | Verified fresh-install and upgrade helper for Termux |
+| `install.sh` | General new-user bootstrap installer |
+| `bin/awvm-update.sh` | Bundled latest-release updater for an existing checkout |
 | `bin/vm-launcher.sh` | Recommended Full/Lite dispatcher using persistent images |
 | `bin/vm-launcher-unified.sh` | Compatibility wrapper for the main dispatcher |
 | `bin/vm-launcher-legacy.sh` | Preserved pre-storage launcher for advanced legacy use |
@@ -324,8 +343,8 @@ It expects the pinned Full/Lite build inputs described by its environment variab
 | `src/test-migration-debug.sh` | Real sparse-image export/import test fixture |
 | `src/test-auth-boot-matrix.sh` | Full/Lite boot matrix for all three auth modes |
 | `src/test-login-sessions.sh` | Real serial-session credential test |
-| `src/package-v036-unified-release.sh` | v0.3.6 full and thin release packager |
-| `docs/RELEASE-v0.3.6.md` | v0.3.6 migration and verification notes |
+| `src/package-v037-unified-release.sh` | v0.3.7 full and thin release packager |
+| `docs/RELEASE-v0.3.7.md` | v0.3.7 installation and update notes |
 | `src/test-persistent-storage.sh` | Full/Lite persistent storage and vmctl administration matrix |
 
 ## Safety and legal use

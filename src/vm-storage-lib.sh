@@ -5,10 +5,15 @@
 vm_default_state_root() {
   if [ -n "${VM_STATE_ROOT:-}" ]; then
     printf '%s\n' "$VM_STATE_ROOT"
-  elif [ -n "${XDG_DATA_HOME:-}" ]; then
+  elif [ -n "${XDG_DATA_HOME:-}" ] && [ -d "$XDG_DATA_HOME/android-wifi-monitor-injection-rootless" ]; then
+    # Preserve data created by v0.3.5/v0.3.6 when it already exists.
     printf '%s\n' "$XDG_DATA_HOME/android-wifi-monitor-injection-rootless"
-  else
+  elif [ -z "${XDG_DATA_HOME:-}" ] && [ -d "${HOME:-.}/.local/share/android-wifi-monitor-injection-rootless" ]; then
     printf '%s\n' "${HOME:-.}/.local/share/android-wifi-monitor-injection-rootless"
+  elif [ -n "${XDG_DATA_HOME:-}" ]; then
+    printf '%s\n' "$XDG_DATA_HOME/awvm"
+  else
+    printf '%s\n' "${HOME:-.}/.local/share/awvm"
   fi
 }
 
