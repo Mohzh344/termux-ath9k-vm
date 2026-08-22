@@ -32,6 +32,6 @@ printf '\nInstallation complete.\n'
 printf 'Persistent VM data: %s\n' "$VM_STATE_ROOT"
 printf 'The Full and Lite images are kept outside the release tree, so updating this archive preserves installed packages and files.\n'
 printf 'Recommended launcher:\n  %s/bin/vm-launcher.sh\n' "$BASE_DIR"
-printf 'Backup commands:\n  %s/bin/vm-backup.sh --full\n  %s/bin/vm-backup.sh --lite\n' "$BASE_DIR" "$BASE_DIR"
-printf 'Portable migration commands:\n  %s/bin/vm-export.sh --lite\n  %s/bin/vm-import.sh --full /path/to/export.tar.gz\n' "$BASE_DIR" "$BASE_DIR"
+printf 'Administration:\n  %s/bin/vmctl.sh doctor\n  %s/bin/vmctl.sh info\n  %s/bin/vmctl.sh status\n' "$BASE_DIR" "$BASE_DIR" "$BASE_DIR"
+printf 'Backup and migration:\n  %s/bin/vmctl.sh backup --full\n  %s/bin/vmctl.sh export --lite\n  %s/bin/vmctl.sh import --full /path/to/export.tar.gz\n' "$BASE_DIR" "$BASE_DIR" "$BASE_DIR"
 printf 'For an existing old checkout, run: VM_LEGACY_DIR=/path/to/old/termux-ath9k-vm bash bin/install-termux.sh\n'

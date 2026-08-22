@@ -2,14 +2,14 @@
 set -euo pipefail
 
 BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-VERSION="${VERSION:-v0.3.5}"
+VERSION="${VERSION:-v0.3.6}"
 INCLUDE_IMAGES="${INCLUDE_IMAGES:-1}"
 DIST_DIR="${DIST_DIR:-$BASE_DIR/dist}"
 FULL_ARCHIVE="${FULL_ARCHIVE:-$BASE_DIR/../termux-ath9k-vm-release-work/termux-ath9k-vm-ready.tar.gz}"
 OLD_UNIFIED_ARCHIVE="${OLD_UNIFIED_ARCHIVE:-$BASE_DIR/dist/termux-ath9k-vm-full-lite-ready.tar.gz}"
 LITE_BUILD_DIR="${LITE_BUILD_DIR:-$BASE_DIR/../termux-ath9k-vm-v031-lite-build/guest}"
 KERNEL_DIR="${KERNEL_DIR:-$BASE_DIR/../termux-ath9k-vm-v031-guest}"
-OUT="${OUT:-$DIST_DIR/termux-ath9k-vm-v035-full-lite-ready.tar.gz}"
+OUT="${OUT:-$DIST_DIR/termux-ath9k-vm-v036-full-lite-ready.tar.gz}"
 STAGE="$(mktemp -d "${TMPDIR:-/tmp}/termux-ath9k-v035-unified.XXXXXX")"
 ROOT="$STAGE/termux-ath9k-vm-full-lite"
 cleanup(){ rm -rf -- "$STAGE"; }
@@ -73,9 +73,9 @@ CREATE_BACKUP=0 "$BASE_DIR/src/configure-console-auth.sh" "$ROOT/lite/guest/alpi
 e2fsck -fn "$ROOT/lite/guest/alpine-ath9k-v030-lite.img" >/dev/null
 cp -p "$KERNEL_DIR/vmlinuz-tiny" "$KERNEL_DIR/vmlinuz-safe" "$LITE_BUILD_DIR/vmlinuz-lts-lite" "$LITE_BUILD_DIR/initramfs-lts-lite" "$ROOT/lite/guest/"
 
-# Use the corrected Lite scripts, patched guest consoles, and v0.3.5 documentation.
-rm -f "$ROOT/docs/LITE-v0.3.1.md" "$ROOT/docs/RELEASE-v0.3.1.md" "$ROOT/docs/LITE-v0.3.3.md" "$ROOT/docs/RELEASE-v0.3.3.md" "$ROOT/docs/LITE-v0.3.4.md" "$ROOT/docs/RELEASE-v0.3.4.md" "$ROOT/docs/LITE-v0.3.5.md" "$ROOT/docs/RELEASE-v0.3.5.md"
-cp -p "$BASE_DIR/docs/LITE-v0.3.5.md" "$ROOT/lite/README.md"
+# Use the corrected Lite scripts, patched guest consoles, and v0.3.6 documentation.
+rm -f "$ROOT/docs/LITE-v0.3.1.md" "$ROOT/docs/RELEASE-v0.3.1.md" "$ROOT/docs/LITE-v0.3.3.md" "$ROOT/docs/RELEASE-v0.3.3.md" "$ROOT/docs/LITE-v0.3.4.md" "$ROOT/docs/RELEASE-v0.3.4.md" "$ROOT/docs/LITE-v0.3.6.md" "$ROOT/docs/RELEASE-v0.3.6.md"
+cp -p "$BASE_DIR/docs/LITE-v0.3.6.md" "$ROOT/lite/README.md"
 cp -p "$BASE_DIR/README-UNIFIED.md" "$ROOT/README.md"
 cp -p "$BASE_DIR/bin/vm-launcher.sh" "$ROOT/bin/vm-launcher.sh"
 cp -p "$BASE_DIR/bin/vm-launcher-unified.sh" "$ROOT/bin/vm-launcher-unified.sh"
@@ -89,7 +89,7 @@ cp -p "$BASE_DIR/bin/launch-vm-lite.sh" "$BASE_DIR/bin/qemu-lite-direct-inner.sh
 cp -p "$BASE_DIR/src/build-lite-image.sh" "$BASE_DIR/src/guest-install-wifi-tools.sh" "$BASE_DIR/src/package-lite-release.sh" "$BASE_DIR/src/build-kernel-tiers.sh" "$BASE_DIR/src/verify-kernel-tiers.sh" "$BASE_DIR/src/patch-console-login-shell.sh" "$BASE_DIR/src/configure-console-auth.sh" "$BASE_DIR/src/vm-storage-lib.sh" "$ROOT/lite/src/"
 mkdir -p "$ROOT/full/src"
 cp -p "$BASE_DIR/src/configure-console-auth.sh" "$BASE_DIR/src/vm-storage-lib.sh" "$ROOT/full/src/"
-cp -p "$BASE_DIR/docs/LITE-v0.3.5.md" "$BASE_DIR/docs/RELEASE-v0.3.5.md" "$BASE_DIR/docs/UNIFIED-RELEASE.md" "$ROOT/docs/"
+cp -p "$BASE_DIR/docs/LITE-v0.3.6.md" "$BASE_DIR/docs/RELEASE-v0.3.6.md" "$BASE_DIR/docs/UNIFIED-RELEASE.md" "$ROOT/docs/"
 chmod +x "$ROOT/bin/"*.sh "$ROOT/src/"*.sh "$ROOT/lite/bin/"*.sh "$ROOT/lite/src/"*.sh "$ROOT/full/src/"*.sh
 
 (
@@ -98,7 +98,7 @@ chmod +x "$ROOT/bin/"*.sh "$ROOT/src/"*.sh "$ROOT/lite/bin/"*.sh "$ROOT/lite/src
 )
 (
   cd "$ROOT/lite/guest"
-  sha256sum alpine-ath9k-v030-lite.img vmlinuz-tiny vmlinuz-safe vmlinuz-lts-lite initramfs-lts-lite > SHA256SUMS-v0.3.5-lite
+  sha256sum alpine-ath9k-v030-lite.img vmlinuz-tiny vmlinuz-safe vmlinuz-lts-lite initramfs-lts-lite > SHA256SUMS-v0.3.6-lite
 )
 
 if [ "$INCLUDE_IMAGES" = 0 ]; then
@@ -110,7 +110,7 @@ if [ "$INCLUDE_IMAGES" = 0 ]; then
   (
     cd "$ROOT/lite/guest"
     sha256sum vmlinuz-tiny vmlinuz-safe vmlinuz-lts-lite initramfs-lts-lite > SHA256SUMS
-    sha256sum vmlinuz-tiny vmlinuz-safe vmlinuz-lts-lite initramfs-lts-lite > SHA256SUMS-v0.3.5-update
+    sha256sum vmlinuz-tiny vmlinuz-safe vmlinuz-lts-lite initramfs-lts-lite > SHA256SUMS-v0.3.6-update
   )
   printf 'Thin update mode: writable guest images excluded; use VM_LEGACY_DIR or existing persistent storage.\n'
 fi

@@ -79,6 +79,37 @@ vm_require_offline_image() {
   command -v e2fsck >/dev/null 2>&1 || { printf 'missing e2fsck; install e2fsprogs\n' >&2; return 1; }
 }
 
+vm_image_lock_path() {
+  local image="$1"
+  printf '%s/locks/%s.lock\n' "${VM_STATE_ROOT:-$(vm_default_state_root)}" "$(basename "$image")"
+}
+
+vm_lock_image() {
+  local image="$1" lock pid
+  lock="$(vm_image_lock_path "$image")"
+  mkdir -p "$(dirname "$lock")"
+  if mkdir "$lock" 2>/dev/null; then
+    printf '%s\n' "$$" >"$lock/pid"
+    printf '%s\n' "$lock"
+    return 0
+  fi
+  pid="$(cat "$lock/pid" 2>/dev/null || true)"
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    printf 'image operation already running for %s (pid %s)\n' "$image" "$pid" >&2
+    return 1
+  fi
+  rm -rf -- "$lock"
+  mkdir "$lock" 2>/dev/null || { printf 'could not acquire image operation lock: %s\n' "$image" >&2; return 1; }
+  printf '%s\n' "$$" >"$lock/pid"
+  printf '%s\n' "$lock"
+}
+
+vm_unlock_image() {
+  local image="$1" lock
+  lock="$(vm_image_lock_path "$image")"
+  rm -rf -- "$lock"
+}
+
 vm_validate_image() {
   local image="$1"
   vm_require_offline_image "$image" || return 1
@@ -88,11 +119,18 @@ vm_validate_image() {
 vm_backup_image() {
   local image="$1" label="${2:-manual}" destination_root="${3:-$(vm_default_state_root)/backups}"
   vm_require_offline_image "$image" || return 1
+  vm_lock_image "$image" >/dev/null || return 1
   mkdir -p "$destination_root"
-  local stamp destination
+  local stamp destination rc
   stamp="$(date -u '+%Y%m%dT%H%M%SZ')"
   destination="$destination_root/$(basename "$image").$label.$stamp.bak"
-  cp --sparse=always --reflink=auto "$image" "$destination"
+  if cp --sparse=always --reflink=auto "$image" "$destination"; then
+    rc=0
+  else
+    rc=$?
+  fi
+  vm_unlock_image "$image"
+  [ "$rc" -eq 0 ] || return "$rc"
   printf '%s\n' "$destination"
 }
 

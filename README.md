@@ -4,9 +4,13 @@ This archive contains the canonical **Full** VM and compact **Lite** VM for runn
 
 > **Important status:** The VM boot, persistent-image, and local QEMU paths are testable in the development environment. Physical AR9271 OTG passthrough, Android USB permissions, and adapter power stability must still be verified on the target phone.
 
-## What is new in v0.3.5
+## What is new in v0.3.6
 
-The release now separates **release files** from **writable guest data**. Full and Lite images are adopted into a persistent storage directory on first installation. Updating the archive replaces launchers, scripts, kernels, and documentation without replacing the user's guest image, installed apk packages, PATH files, or `/root` data.
+The release keeps the v0.3.5 persistent-image design and adds a single host administration interface: `bin/vmctl.sh`. It combines readiness diagnostics, VM information, status, backups, portable export/import, image resizing, persistent PATH management, and Android USB diagnostics. The older `vm-backup.sh`, `vm-export.sh`, and `vm-import.sh` names remain as short compatibility wrappers rather than separate implementations.
+
+The release also adds an atomic image-operation lock. Backup, import, resize, and persistent PATH changes refuse to run concurrently on the same image, and stale locks are recoverable after an interrupted Termux process.
+
+Full and Lite images are adopted into a persistent storage directory on first installation. Updating the archive replaces launchers, scripts, kernels, and documentation without replacing the user's guest image, installed apk packages, PATH files, or `/root` data.
 
 Lite `tiny`, `safe`, and `lts` are kernel choices over the same Lite image. Switching between them does not reinstall packages. For Lite-to-Full or Full-to-Lite migration, the project provides an allow-listed portable export/import flow rather than copying an incompatible filesystem image.
 
@@ -16,17 +20,17 @@ Download an archive from the [latest GitHub Release](https://github.com/Mohzh344
 
 | Archive | Intended user | Contains writable images? |
 |---|---|---:|
-| `termux-ath9k-vm-v035-full-lite-ready.tar.gz` | New installation or migration from an older checkout | Yes, for first adoption |
-| `termux-ath9k-vm-v035-update.tar.gz` | Existing v0.3.x installation | No; it preserves storage and saves about 290 MB of compressed download |
+| `termux-ath9k-vm-v036-full-lite-ready.tar.gz` | New installation or migration from an older checkout | Yes, for first adoption |
+| `termux-ath9k-vm-v036-update.tar.gz` | Existing v0.3.x installation | No; it preserves storage and saves about 290 MB of compressed download |
 
 For a new installation, verify the published checksum and extract the full archive into a new directory:
 
 ```sh
-sha256sum -c termux-ath9k-vm-v035-full-lite-ready.tar.gz.sha256
-mkdir -p "$HOME/android-wifi-vm-v035"
-tar --sparse -xzf termux-ath9k-vm-v035-full-lite-ready.tar.gz \
-  -C "$HOME/android-wifi-vm-v035" --strip-components=1
-cd "$HOME/android-wifi-vm-v035"
+sha256sum -c termux-ath9k-vm-v036-full-lite-ready.tar.gz.sha256
+mkdir -p "$HOME/android-wifi-vm-v036"
+tar --sparse -xzf termux-ath9k-vm-v036-full-lite-ready.tar.gz \
+  -C "$HOME/android-wifi-vm-v036" --strip-components=1
+cd "$HOME/android-wifi-vm-v036"
 ```
 
 Install host dependencies once:
@@ -35,7 +39,14 @@ Install host dependencies once:
 bash bin/install-termux.sh
 ```
 
-The installer creates the persistent storage directory and adopts any bundled Full/Lite image that does not already have a persistent copy. It never overwrites an existing persistent image. Start the recommended launcher with:
+The installer creates the persistent storage directory and adopts any bundled Full/Lite image that does not already have a persistent copy. It never overwrites an existing persistent image. Check the installation before launching with:
+
+```sh
+bash bin/vmctl.sh doctor
+bash bin/vmctl.sh info
+```
+
+Start the recommended launcher with:
 
 ```sh
 bash bin/vm-launcher.sh
@@ -74,10 +85,10 @@ The first installer run with the full archive moves or sparsely copies the bundl
 For an existing installation, extract the thin update archive into a different directory and run the installer before deleting the old checkout:
 
 ```sh
-mkdir -p "$HOME/android-wifi-vm-v035-update"
-tar --sparse -xzf termux-ath9k-vm-v035-update.tar.gz \
-  -C "$HOME/android-wifi-vm-v035-update" --strip-components=1
-cd "$HOME/android-wifi-vm-v035-update"
+mkdir -p "$HOME/android-wifi-vm-v036-update"
+tar --sparse -xzf termux-ath9k-vm-v036-update.tar.gz \
+  -C "$HOME/android-wifi-vm-v036-update" --strip-components=1
+cd "$HOME/android-wifi-vm-v036-update"
 VM_LEGACY_DIR="$HOME/old/termux-ath9k-vm-full-lite" \
   bash bin/install-termux.sh
 ```
@@ -89,7 +100,7 @@ If the old image was already adopted into the default storage directory, omit `V
 Extract the full or thin update archive into a different directory. Before deleting the old checkout, run the installer from the new directory and point it at the old one:
 
 ```sh
-cd "$HOME/android-wifi-vm-v035"
+cd "$HOME/android-wifi-vm-v036"
 VM_LEGACY_DIR="$HOME/old/termux-ath9k-vm-full-lite" \
   bash bin/install-termux.sh
 ```
@@ -102,27 +113,34 @@ For isolated legacy/debug behavior, disable the storage layer explicitly:
 VM_STORAGE_ENABLED=0 bash bin/vm-launcher.sh --lite --dry-run --non-interactive
 ```
 
-## Backups and migration
+## Administration, backups, and migration
 
-A backup is a sparse-aware copy of a complete Full or Lite image. The VM must be stopped:
+Use the single administration command for maintenance. The VM must be stopped for operations that write an image:
 
 ```sh
-bash bin/vm-backup.sh --lite
-bash bin/vm-backup.sh --full
+bash bin/vmctl.sh doctor             # host, release, storage, and USB readiness
+bash bin/vmctl.sh info               # image size, auth entry, PATH entries, apk count
+bash bin/vmctl.sh status             # running QEMU processes and image state
+bash bin/vmctl.sh backup --lite
+bash bin/vmctl.sh backup --full
 ```
+
+A backup is a sparse-aware copy of a complete Full or Lite image. The image lock prevents another management operation from changing the same image during the copy. The old commands `bin/vm-backup.sh`, `bin/vm-export.sh`, and `bin/vm-import.sh` still work and call `vmctl.sh` internally.
 
 The auth configurator and importer also create safety backups by default. Never edit an image with `debugfs`, `e2fsck`, or a migration command while QEMU is using it.
 
 A portable export is smaller and better for moving a working environment between variants. It contains `/root`, `/home`, `/opt`, `/usr/local`, `/etc/profile.d`, and `/etc/apk/world`:
 
 ```sh
-bash bin/vm-export.sh --lite
+bash bin/vmctl.sh export --lite
+bash bin/vmctl.sh export --full
 ```
 
 Import it into a stopped target image:
 
 ```sh
-bash bin/vm-import.sh --full /path/to/lite-user-data-YYYYMMDDTHHMMSSZ.tar.gz
+bash bin/vmctl.sh import --full /path/to/lite-user-data-YYYYMMDDTHHMMSSZ.tar.gz
+bash bin/vmctl.sh import --lite /path/to/full-user-data-YYYYMMDDTHHMMSSZ.tar.gz
 ```
 
 The importer restores user files, local tools, persistent PATH files, and the explicitly requested apk package list. It writes the package list to `/root/.vm-migration/apk-world` and creates:
@@ -142,6 +160,25 @@ The helper uses the target's apk repositories and signatures. It does not copy p
 Authentication databases, `/etc/inittab`, apk repositories, kernels, firmware, and `/lib/modules` are intentionally excluded from portable exports. Reconfigure `root-console`, `login`, or `login-empty` with the launcher instead of copying `/etc/shadow` or `/etc/passwd` between images.
 
 Export archives can contain private files from `/root`. Store them securely and delete them when they are no longer needed.
+
+### Image size and persistent PATH management
+
+When an image needs more room, grow it only while the VM is stopped. The command creates a safety backup, checks ext4, grows the sparse file, and validates the result:
+
+```sh
+bash bin/vmctl.sh resize --lite 3G
+bash bin/vmctl.sh resize --full 4G
+```
+
+To persist a custom tool directory without manually editing `/etc/profile`, use:
+
+```sh
+bash bin/vmctl.sh path add --lite /opt/my-tool/bin
+bash bin/vmctl.sh path add --full /usr/local/custom/bin
+bash bin/vmctl.sh path list --lite
+```
+
+The managed PATH file is stored inside the guest at `/etc/profile.d/vmctl-path.sh`, is loaded by the login shell, and remains in the persistent image across reboot and release updates. The command refuses to edit an image while QEMU is using it.
 
 ## Selecting Full, Lite, and kernel tiers
 
@@ -192,7 +229,16 @@ bash bin/vm-launcher.sh --lite --dry-run --non-interactive
 
 The `-l` in `/bin/sh -l` means login shell; it does not invoke a password login manager. It is what makes persistent PATH files load in the direct root console. A PATH added with `export PATH=...` in one shell remains temporary. A PATH written to `/etc/profile.d/tool-name.sh` remains available after reboot and in both root-console and normal login modes.
 
-## USB passthrough for AR9271
+## USB diagnostics and passthrough for AR9271
+
+Before troubleshooting passthrough, run the non-destructive host diagnostic:
+
+```sh
+bash bin/vmctl.sh usb
+bash bin/vmctl.sh doctor
+```
+
+The diagnostic checks Termux:API visibility, `0cf3:9271`, QEMU, and `socat`. It does not grant permission or start QEMU; the launcher remains responsible for requesting Android USB permission.
 
 Connect the adapter through OTG and let Android expose it to Termux:
 
@@ -236,7 +282,7 @@ Rebuilding is optional. On a supported Linux/ARM64-capable build host:
 The combined release packager for this feature is:
 
 ```sh
-./src/package-v035-unified-release.sh
+./src/package-v036-unified-release.sh
 ```
 
 It expects the pinned Full/Lite build inputs described by its environment variables and emits a sparse-aware archive plus checksum. Set `INCLUDE_IMAGES=0` and choose an update output path to build the thin archive for existing users. The original `v0.3.0` Full release remains a historical source and is not rewritten by this feature.
@@ -246,21 +292,20 @@ It expects the pinned Full/Lite build inputs described by its environment variab
 | Path | Purpose |
 |---|---|
 | `bin/vm-launcher.sh` | Recommended Full/Lite dispatcher using persistent images |
-| `bin/vm-launcher-unified.sh` | Explicit name for the same dispatcher |
+| `bin/vm-launcher-unified.sh` | Compatibility wrapper for the main dispatcher |
 | `bin/vm-launcher-legacy.sh` | Preserved pre-storage launcher for advanced legacy use |
-| `bin/vm-backup.sh` | Sparse-aware Full/Lite image backup |
-| `bin/vm-export.sh` | Portable user-data and apk-world export |
-| `bin/vm-import.sh` | Safe allow-listed import into a stopped target image |
+| `bin/vmctl.sh` | Unified doctor, info, status, backup, export, import, resize, PATH, and USB administration |
+| `bin/vm-backup.sh`, `vm-export.sh`, `vm-import.sh` | Compatibility wrappers that call `vmctl.sh` |
 | `src/vm-storage-lib.sh` | Shared adoption, lock, backup, and ext4 helpers |
 | `src/install-termux-unified.sh` | Host dependency installer and image adoption step |
 | `src/configure-console-auth.sh` | Offline auth-mode change with backup and ext4 validation |
 | `src/test-unified-launcher.sh` | Launcher detection and selection tests |
 | `src/test-migration-debug.sh` | Real sparse-image export/import test fixture |
-| `src/test-persistent-storage.sh` | Persistent-image reuse, backup, and Lite-to-Full test |
 | `src/test-auth-boot-matrix.sh` | Full/Lite boot matrix for all three auth modes |
 | `src/test-login-sessions.sh` | Real serial-session credential test |
-| `src/package-v035-unified-release.sh` | v0.3.5 full and thin release packager |
-| `docs/RELEASE-v0.3.5.md` | v0.3.5 migration and verification notes |
+| `src/package-v036-unified-release.sh` | v0.3.6 full and thin release packager |
+| `docs/RELEASE-v0.3.6.md` | v0.3.6 migration and verification notes |
+| `src/test-persistent-storage.sh` | Full/Lite persistent storage and vmctl administration matrix |
 
 ## Safety and legal use
 

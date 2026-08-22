@@ -58,9 +58,56 @@ lite_backup="$(VM_STATE_ROOT="$T/state" "$BASE_DIR/bin/vm-backup.sh" --lite | se
 [ -f "$full_backup" ] && [ -f "$lite_backup" ]
 echo 'PASS: Full and Lite sparse backups are created.'
 
+# The unified administration command must persist PATH, report state, and grow
+# a stopped image without losing its contents.
+VM_STATE_ROOT="$T/state" "$BASE_DIR/bin/vmctl.sh" path add --lite /opt/test-tools >/tmp/vmctl-path-add.out
+VM_STATE_ROOT="$T/state" "$BASE_DIR/bin/vmctl.sh" path list --lite | grep -qx '/opt/test-tools'
+debugfs -R 'cat /etc/profile.d/vmctl-path.sh' "$lite_image" 2>/dev/null | grep -q 'vmctl-path: /opt/test-tools'
+VM_STATE_ROOT="$T/state" "$BASE_DIR/bin/vmctl.sh" info --lite >"$T/vmctl-info.txt"
+grep -q 'managed_path_entries=' "$T/vmctl-info.txt"
+VM_STATE_ROOT="$T/state" "$BASE_DIR/bin/vmctl.sh" status >"$T/vmctl-status.txt"
+grep -q "VM_STATE_ROOT=$T/state" "$T/vmctl-status.txt"
+VM_STATE_ROOT="$T/state" FULL_DIR="$T/release-one/full" LITE_DIR="$T/release-one/lite" \
+  "$BASE_DIR/bin/vmctl.sh" doctor --lite >"$T/vmctl-doctor.txt" || true
+grep -q '\[PASS\].*lite image' "$T/vmctl-doctor.txt"
+VM_STATE_ROOT="$T/state" "$BASE_DIR/bin/vmctl.sh" usb >"$T/vmctl-usb.txt"
+grep -q 'USB' "$T/vmctl-usb.txt"
+old_size="$(stat -c '%s' "$lite_image")"
+new_size=$((old_size + 4194304))
+VM_STATE_ROOT="$T/state" "$BASE_DIR/bin/vmctl.sh" resize --lite "$new_size" >"$T/vmctl-resize.txt"
+grep -q 'Image grown successfully' "$T/vmctl-resize.txt"
+[ "$(stat -c '%s' "$lite_image")" -eq "$new_size" ]
+e2fsck -fn "$lite_image" >/dev/null
+echo 'PASS: vmctl Lite path, info, status, doctor, USB diagnostics, and resize work.'
+
+VM_STATE_ROOT="$T/state" "$BASE_DIR/bin/vmctl.sh" path add --full /opt/full-tools >/dev/null
+VM_STATE_ROOT="$T/state" "$BASE_DIR/bin/vmctl.sh" path list --full | grep -qx '/opt/full-tools'
+VM_STATE_ROOT="$T/state" "$BASE_DIR/bin/vmctl.sh" info --full >"$T/vmctl-full-info.txt"
+grep -q 'managed_path_entries=' "$T/vmctl-full-info.txt"
+VM_STATE_ROOT="$T/state" FULL_DIR="$T/release-one/full" LITE_DIR="$T/release-one/lite" \
+  "$BASE_DIR/bin/vmctl.sh" doctor --full >"$T/vmctl-full-doctor.txt" || true
+grep -q '\[PASS\].*full image' "$T/vmctl-full-doctor.txt"
+old_full_size="$(stat -c '%s' "$full_image")"
+new_full_size=$((old_full_size + 4194304))
+VM_STATE_ROOT="$T/state" "$BASE_DIR/bin/vmctl.sh" resize --full "$new_full_size" >"$T/vmctl-full-resize.txt"
+grep -q 'Image grown successfully' "$T/vmctl-full-resize.txt"
+[ "$(stat -c '%s' "$full_image")" -eq "$new_full_size" ]
+e2fsck -fn "$full_image" >/dev/null
+
+held_lock="$(VM_STATE_ROOT="$T/state" vm_lock_image "$lite_image")"
+if VM_STATE_ROOT="$T/state" "$BASE_DIR/bin/vmctl.sh" path add --lite /opt/blocked-by-lock >/dev/null 2>&1; then
+  echo 'lock test unexpectedly succeeded' >&2
+  exit 1
+fi
+VM_STATE_ROOT="$T/state" vm_unlock_image "$lite_image"
+echo 'PASS: vmctl Full path, info, doctor, resize, and active-lock rejection work.'
+
 export_file="$T/lite-export.tar.gz"
+full_export_file="$T/full-export.tar.gz"
 VM_STATE_ROOT="$T/state" "$BASE_DIR/bin/vm-export.sh" --lite --output "$export_file" >/dev/null
+VM_STATE_ROOT="$T/state" "$BASE_DIR/bin/vm-export.sh" --full --output "$full_export_file" >/dev/null
 VM_STATE_ROOT="$T/state" "$BASE_DIR/bin/vm-import.sh" --full "$export_file" >/dev/null
+VM_STATE_ROOT="$T/state" "$BASE_DIR/bin/vm-import.sh" --lite "$full_export_file" >/dev/null
 grep -qx 'persistent-data' <(debugfs -R 'cat /root/persistent-data.txt' "$full_image" 2>/dev/null)
 e2fsck -fn "$lite_image" >/dev/null
 e2fsck -fn "$full_image" >/dev/null
